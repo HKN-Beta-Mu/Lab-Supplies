@@ -50,3 +50,4 @@ local demo persistence to a remote API without rebuilding every screen.
 The proposed Google Sheets architecture, table layout, security model, and
 migration sequence are in [docs/data-architecture.md](docs/data-architecture.md).
 # Lab-Supplies
+# Lab-Supplies
