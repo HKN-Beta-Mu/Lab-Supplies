@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.04\.3"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.05\.1"/);
   assert.match(html, /vInventory/);
   assert.match(html, /Refresh verified quotes/);
   assert.match(html, /Check non-API sources/);
@@ -64,6 +64,7 @@ test("the data model initializes and can create a persisted semester", async () 
   }
 
   globalThis.window = {
+    confirm: () => true,
     LabKitDataSource: {
       load: () => null,
       save: (data) => {
@@ -132,6 +133,10 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(app.state.semesterId, "sp27");
     assert.equal(app.termMap.sp27.status, "Planning");
     assert.equal(app.termMap.sp27.inventoryApplied, true);
+    assert.equal(app.termMap.sp27.plannedKits.ece2031, 0);
+    assert.ok(app.termMap.sp27.suggestedKits.ece2031 > 0);
+    assert.equal(app.termMap.sp27.inventoryAllocation.packedKits.ece2031, 0);
+    app.updateTermKitUnits("sp27", "ece2031", 20);
     assert.equal(app.termMap.sp27.inventoryAllocation.packedKits.ece2031, 10);
     assert.ok(app.termMap.sp27.inventoryAllocation.components.hct00 > 0);
     const planningView = app.renderVals();
@@ -143,11 +148,39 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(app.termMap.su27.inventoryApplied, false);
     assert.equal(app.termMap.su27.inventoryAllocation.components.hct00, undefined);
 
+    assert.doesNotThrow(() => app.startKitEdit("ece2031", "future"));
+    assert.equal(app.state.scope, "global");
+    assert.equal(app.state.gview, "build");
+    const futureBuilder = app.renderVals();
+    assert.ok(futureBuilder.builder.items.length > 0);
+    assert.equal(futureBuilder.builder.items[0].name, "74HCT00N");
+    assert.doesNotThrow(() => app.startKitEdit("ece2031", "sp27"));
+    assert.equal(app.state.scope, "semester");
+    assert.equal(app.state.semesterId, "sp27");
+    assert.equal(app.state.view, "build");
+    assert.doesNotThrow(() => app.renderVals());
+    app.updateTermKitPrice("sp27", "ece2031", "20");
+    assert.equal(app.termMap.sp27.salePrices.ece2031, 20);
+    app.toggleTermKitOffering("sp27", "ece3043");
+    assert.equal(app.termMap.sp27.kitOfferings.ece3043, false);
+    assert.equal(app.sales(app.kitMap.ece3043, "sp27").sold, 0);
+    assert.ok(app.lineupVersions.length >= 1);
+
+    const fallSales = app.termMap.fa26.sales;
+    app.setTermStatus("fa26", "Closed");
+    assert.equal(app.termMap.fa26.sales, fallSales);
+    assert.equal(app.termMap.fa26.actualPending, false);
+    app.setTermStatus("fa26", "Planning");
+    assert.equal(app.termMap.fa26.status, "Planning");
+    app.setTermStatus("su26", "Planning");
+    assert.equal(app.termMap.su26.status, "Closed");
+
     app.persistData();
     assert.equal(lastSaved.terms.length, 38);
     assert.equal(lastSaved.historicalDataVersion, "2026-10-04");
     assert.equal(lastSaved.kits.length, 7);
     assert.equal(lastSaved.kitVersions[0].items[0].note, "Must be through-hole and breadboard compatible");
+    assert.ok(lastSaved.lineupVersions.length >= 1);
     assert.equal(lastSaved.inventory.packedKits.ece2031.prepared, 238);
   } finally {
     delete globalThis.window;
@@ -366,7 +399,10 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   assert.match(source, /PackedKitInventory/);
   assert.match(source, /KitItemRequirements/);
   assert.match(source, /KitVersions/);
+  assert.match(source, /KitLineupVersions/);
   assert.match(source, /SemesterKitVersions/);
+  assert.match(source, /kit_offerings_json/);
+  assert.match(source, /sale_prices_json/);
   assert.match(source, /ChangeHistory/);
   assert.match(source, /function suggestSemester_/);
   assert.match(source, /function refreshSupplierQuotes_/);
