@@ -52,6 +52,23 @@ jobs:
             --deploymentId "$APPS_SCRIPT_DEPLOYMENT_ID" \
             --description "GitHub ${GITHUB_SHA::12}"
 
+      - name: Verify deployed web app
+        env:
+          APPS_SCRIPT_DEPLOYMENT_ID: ${{ secrets.APPS_SCRIPT_DEPLOYMENT_ID }}
+        run: |
+          deployment_url="https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec"
+          for attempt in 1 2 3 4 5 6; do
+            status="$(curl --location --silent --output /tmp/labkit-deployment.html --write-out '%{http_code}' "$deployment_url")"
+            if [ "$status" = "200" ] && grep --quiet "LabKit" /tmp/labkit-deployment.html; then
+              echo "LabKit deployment is serving the application."
+              exit 0
+            fi
+            echo "Deployment not ready yet (HTTP $status, attempt $attempt of 6)."
+            sleep 5
+          done
+          echo "The Apps Script deployment did not return the LabKit application."
+          exit 1
+
       - name: Remove temporary credentials
         if: always()
         run: rm -f "$HOME/.clasprc.json" .clasp.json

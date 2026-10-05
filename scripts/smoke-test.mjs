@@ -382,6 +382,10 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   assert.doesNotMatch(source, /private[_ ]?key|service[_ ]?account[_ ]?key/i);
 
   assert.equal(manifest.runtimeVersion, "V8");
+  assert.deepEqual(manifest.webapp, {
+    access: "ANYONE_ANONYMOUS",
+    executeAs: "USER_DEPLOYING",
+  });
   assert.ok(manifest.oauthScopes.includes(
     "https://www.googleapis.com/auth/script.external_request",
   ));
