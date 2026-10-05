@@ -46,13 +46,18 @@ const LABKIT_SCHEMAS = Object.freeze({
     "id", "kit_id", "version_number", "label", "effective_from", "effective_to",
     "items_json", "source", "created_at", "updated_at", "version",
   ]),
+  KitLineupVersions: Object.freeze([
+    "id", "version_number", "label", "kit_ids_json", "source", "created_at",
+    "updated_at", "version",
+  ]),
   SemesterKitVersions: Object.freeze([
     "id", "semester_id", "kit_id", "kit_version_id", "updated_at", "version",
   ]),
   Semesters: Object.freeze([
     "id", "label", "season", "year", "status", "forecast_units", "actual_units",
     "factor", "class_counts_json", "kit_sales_json", "rates_json",
-    "individual_sales_json", "actual_pending", "updated_at", "version",
+    "individual_sales_json", "actual_pending", "kit_offerings_json",
+    "sale_prices_json", "lineup_version_id", "updated_at", "version",
   ]),
   SalesSummary: Object.freeze([
     "semester_id", "label", "transaction_count", "credit_card_fee_count",
@@ -60,7 +65,8 @@ const LABKIT_SCHEMAS = Object.freeze({
   ]),
   SemesterKits: Object.freeze([
     "id", "semester_id", "kit_id", "sold", "on_hand", "faulty", "to_purchase",
-    "forecast_override", "updated_at", "version",
+    "forecast_override", "offered", "sale_price", "revenue", "estimated_profit",
+    "updated_at", "version",
   ]),
   Inventory: Object.freeze([
     "id", "component_id", "quantity", "location", "counted_at", "updated_at", "version",
@@ -1238,6 +1244,9 @@ function validateSnapshot_(value) {
       throw appError_("INVALID_SNAPSHOT", "snapshot." + key + " must be a list.");
     }
   });
+  if (snapshot.lineupVersions !== undefined && !Array.isArray(snapshot.lineupVersions)) {
+    throw appError_("INVALID_SNAPSHOT", "snapshot.lineupVersions must be a list.");
+  }
   if (snapshot.alternatives !== undefined && !isPlainObject_(snapshot.alternatives)) {
     throw appError_("INVALID_SNAPSHOT", "snapshot.alternatives must be an object.");
   }
@@ -1259,9 +1268,14 @@ function validateSnapshot_(value) {
 }
 
 function syncSnapshotToTables_(snapshot, version, now, email) {
+  const spreadsheet = getSpreadsheet_();
+  ["KitLineupVersions", "Semesters", "SemesterKits"].forEach(function (name) {
+    ensureSheet_(spreadsheet, name, LABKIT_SCHEMAS[name]);
+  });
   const catalog = snapshot.catalog;
   const kits = snapshot.kits;
   const kitVersions = snapshot.kitVersions;
+  const lineupVersions = arrayOrEmpty_(snapshot.lineupVersions);
   const changeLog = snapshot.changeLog;
   const terms = snapshot.terms;
   const orders = snapshot.orders;
@@ -1282,7 +1296,7 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         manufacturer: item.mfr,
         package: item.pkg,
         description: item.role,
-        active: true,
+        active: kit.active !== false,
         unit_cost: item.base,
         stock_quantity: isPlainObject_(componentInventory[item.id])
           ? numberOrZero_(componentInventory[item.id].onHand)
@@ -1364,6 +1378,20 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
       };
     }));
 
+  replaceObjectRows_(getSheet_("KitLineupVersions"), LABKIT_SCHEMAS.KitLineupVersions,
+    lineupVersions.map(function (item) {
+      return {
+        id: item.id,
+        version_number: numberOrZero_(item.number),
+        label: item.label,
+        kit_ids_json: jsonCell_(arrayOrEmpty_(item.kitIds)),
+        source: item.source,
+        created_at: item.createdAt,
+        updated_at: now,
+        version: version,
+      };
+    }));
+
   const semesterVersionRows = [];
   terms.forEach(function (term) {
     const assignments = isPlainObject_(term.kitVersions) ? term.kitVersions : {};
@@ -1397,6 +1425,9 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         rates_json: jsonCell_(term.rate || {}),
         individual_sales_json: jsonCell_(term.items || {}),
         actual_pending: Boolean(term.actualPending),
+        kit_offerings_json: jsonCell_(term.kitOfferings || {}),
+        sale_prices_json: jsonCell_(term.salePrices || {}),
+        lineup_version_id: term.lineupVersionId || "",
         updated_at: now,
         version: version,
       };
@@ -1430,6 +1461,11 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         && isPlainObject_(term.inventoryAllocation.packedKits)
         ? numberOrZero_(term.inventoryAllocation.packedKits[kit.id])
         : 0;
+      const offered = !isPlainObject_(term.kitOfferings) || term.kitOfferings[kit.id] !== false;
+      const salePrice = isPlainObject_(term.salePrices) && term.salePrices[kit.id] !== undefined
+        ? Number(term.salePrices[kit.id])
+        : "";
+      const units = term.actualPending === true ? planned : sold;
       semesterKitRows.push({
         id: String(term.id) + ":" + String(kit.id),
         semester_id: term.id,
@@ -1441,6 +1477,10 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
           ? numberOrZero_(spring.purchase)
           : Math.max(0, planned - allocation),
         forecast_override: isPlainObject_(state.overrides) ? state.overrides[kit.id] : "",
+        offered: offered,
+        sale_price: salePrice,
+        revenue: salePrice === "" ? "" : units * salePrice,
+        estimated_profit: "",
         updated_at: now,
         version: version,
       });

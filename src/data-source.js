@@ -97,6 +97,7 @@
       catalog: Array.isArray(source.catalog) ? source.catalog : [],
       kits: Array.isArray(source.kits) ? source.kits : [],
       kitVersions: Array.isArray(source.kitVersions) ? source.kitVersions : [],
+      lineupVersions: Array.isArray(source.lineupVersions) ? source.lineupVersions : [],
       changeLog: Array.isArray(source.changeLog) ? source.changeLog : [],
       orders: Array.isArray(source.orders) ? source.orders : [],
       terms: Array.isArray(source.terms) ? source.terms : [],
