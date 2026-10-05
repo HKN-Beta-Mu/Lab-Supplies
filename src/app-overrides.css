@@ -32,6 +32,11 @@ button {
   flex: none;
 }
 
+.app-sign-out {
+  flex: none;
+  white-space: nowrap;
+}
+
 .save-dot {
   display: inline-block;
   width: 7px;
@@ -196,7 +201,7 @@ button {
   .app-header > div:first-child > div:last-child {
     width: 100%;
     display: grid !important;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: auto repeat(3, 1fr);
   }
 
   .app-header > div:first-child > div:last-child > div {

@@ -1,0 +1,283 @@
+[hidden] {
+  display: none !important;
+}
+
+body:not(.auth-signed-in) x-dc,
+body:not(.auth-signed-in) #dc-root {
+  display: none !important;
+}
+
+.labkit-auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 24px;
+  background:
+    linear-gradient(rgba(236, 48, 19, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(236, 48, 19, 0.07) 1px, transparent 1px),
+    #f5f1e8;
+  background-size: 28px 28px;
+  color: #181713;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body.auth-signed-in .labkit-auth-gate {
+  display: none;
+}
+
+body.labkit-read-only x-dc button,
+body.labkit-read-only x-dc input,
+body.labkit-read-only x-dc select,
+body.labkit-read-only x-dc textarea {
+  pointer-events: none !important;
+  opacity: 0.58;
+}
+
+.labkit-watch-banner {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 80;
+  display: flex;
+  width: min(680px, calc(100vw - 28px));
+  box-sizing: border-box;
+  align-items: center;
+  gap: 10px;
+  transform: translateX(-50%);
+  border: 2px solid #181713;
+  background: #fff3cd;
+  color: #181713;
+  padding: 10px 13px;
+  box-shadow: 4px 4px 0 #181713;
+  font: 12px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.labkit-watch-banner strong {
+  flex: none;
+  color: #a3220e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.labkit-auth-card {
+  width: min(440px, 100%);
+  border: 2px solid #181713;
+  background: #fffdf8;
+  box-shadow: 9px 9px 0 #181713;
+}
+
+.labkit-auth-brand {
+  padding: 18px 22px;
+  border-bottom: 2px solid #181713;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.labkit-auth-brand span {
+  color: #ec3013;
+}
+
+.labkit-auth-content {
+  padding: 26px 22px 22px;
+}
+
+.labkit-auth-content h1 {
+  margin: 0;
+  font-size: clamp(25px, 6vw, 34px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.labkit-auth-description {
+  margin: 10px 0 22px;
+  color: #625f56;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.labkit-auth-form {
+  display: grid;
+  gap: 15px;
+}
+
+.labkit-auth-field {
+  display: grid;
+  gap: 6px;
+}
+
+.labkit-auth-field label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.labkit-auth-field input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1.5px solid #181713;
+  border-radius: 0;
+  background: #fff;
+  color: #181713;
+  padding: 12px 13px;
+  outline: 0;
+  font: inherit;
+}
+
+.labkit-auth-field input:focus {
+  border-color: #ec3013;
+  box-shadow: 0 0 0 2px rgba(236, 48, 19, 0.18);
+}
+
+.labkit-auth-hint {
+  color: #716d64;
+  font-size: 11px;
+}
+
+.labkit-auth-primary,
+.labkit-auth-secondary,
+.labkit-auth-link {
+  border-radius: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.labkit-auth-primary {
+  border: 2px solid #181713;
+  background: #ec3013;
+  color: #fff;
+  padding: 12px 16px;
+  font-weight: 800;
+  box-shadow: 4px 4px 0 #181713;
+}
+
+.labkit-auth-primary:hover {
+  background: #c9250e;
+}
+
+.labkit-auth-secondary {
+  border: 1.5px solid #181713;
+  background: #fffdf8;
+  color: #181713;
+  padding: 10px 13px;
+  font-weight: 750;
+}
+
+.labkit-auth-link {
+  border: 0;
+  background: transparent;
+  color: #bd240d;
+  padding: 3px;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.labkit-auth-primary:disabled,
+.labkit-auth-secondary:disabled,
+.labkit-auth-link:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.labkit-auth-status {
+  min-height: 20px;
+  margin: 13px 0 0;
+  color: #2d6350;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.labkit-auth-status.is-error,
+.labkit-auth-loading.is-error {
+  color: #a3220e;
+}
+
+.labkit-auth-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-top: 13px;
+  color: #625f56;
+  font-size: 12px;
+}
+
+.labkit-auth-loading {
+  padding: 10px 0;
+  color: #625f56;
+  font-size: 14px;
+}
+
+.labkit-auth-verification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.labkit-auth-session {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 65;
+  display: flex;
+  max-width: min(420px, calc(100vw - 28px));
+  align-items: center;
+  gap: 10px;
+  border: 1.5px solid #181713;
+  background: #fffdf8;
+  color: #181713;
+  padding: 8px 9px 8px 12px;
+  box-shadow: 3px 3px 0 #181713;
+  font: 12px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.labkit-auth-session span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.labkit-auth-session .labkit-build-id {
+  flex: none;
+  color: #716d64;
+  font-size: 10px;
+}
+
+.labkit-auth-session button {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: #bd240d;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+}
+
+@media (max-width: 520px) {
+  .labkit-auth-gate {
+    align-items: start;
+    padding: 18px 14px;
+  }
+
+  .labkit-auth-card {
+    margin-top: 5vh;
+    box-shadow: 6px 6px 0 #181713;
+  }
+
+  .labkit-auth-content {
+    padding: 22px 18px 18px;
+  }
+
+  .labkit-watch-banner {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+}

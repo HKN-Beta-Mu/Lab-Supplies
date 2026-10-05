@@ -1,0 +1,57 @@
+name: Deploy LabKit to Apps Script
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.APPS_SCRIPT_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test and build
+        run: npm run check
+
+      - name: Restore clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON: ${{ secrets.CLASP_JSON }}
+        run: |
+          test -n "$CLASPRC_JSON"
+          test -n "$CLASP_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          printf '%s' "$CLASP_JSON" > .clasp.json
+          chmod 600 "$HOME/.clasprc.json" .clasp.json
+
+      - name: Push generated Apps Script files
+        run: npx --yes @google/clasp@3.4.1 push --force
+
+      - name: Update existing web app deployment
+        env:
+          APPS_SCRIPT_DEPLOYMENT_ID: ${{ secrets.APPS_SCRIPT_DEPLOYMENT_ID }}
+        run: |
+          test -n "$APPS_SCRIPT_DEPLOYMENT_ID"
+          npx --yes @google/clasp@3.4.1 create-deployment \
+            --deploymentId "$APPS_SCRIPT_DEPLOYMENT_ID" \
+            --description "GitHub ${GITHUB_SHA::12}"
+
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" .clasp.json
