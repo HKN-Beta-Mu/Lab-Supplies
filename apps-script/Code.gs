@@ -1425,6 +1425,7 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
   const terms = snapshot.terms;
   const orders = snapshot.orders;
   const state = isPlainObject_(snapshot.state) ? snapshot.state : {};
+  const statusOverrides = isPlainObject_(state.statusOv) ? state.statusOv : {};
   const alternatives = isPlainObject_(snapshot.alternatives) ? snapshot.alternatives : {};
   const inventory = isPlainObject_(snapshot.inventory) ? snapshot.inventory : {};
   const componentInventory = isPlainObject_(inventory.components) ? inventory.components : {};
@@ -1558,7 +1559,6 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
 
   replaceObjectRows_(getSheet_("Semesters"), LABKIT_SCHEMAS.Semesters,
     terms.map(function (term) {
-      const statusOverrides = isPlainObject_(state.statusOv) ? state.statusOv : {};
       return {
         id: term.id,
         label: term.label,
@@ -1620,7 +1620,8 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
       const versionPrice = assignedVersion && assignedVersion.salePrice !== undefined
         ? assignedVersion.salePrice
         : undefined;
-      const priceValue = recordedPrice !== undefined ? recordedPrice : versionPrice;
+      const closed = (statusOverrides[term.id] || term.status) === "Closed";
+      const priceValue = recordedPrice !== undefined ? recordedPrice : (closed ? undefined : versionPrice);
       const salePrice = priceValue === undefined || priceValue === null || priceValue === ""
         ? ""
         : Number(priceValue);

@@ -13,7 +13,8 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.05\.5"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.05\.7"/);
+  assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /Refresh APIs \+ AI review/);
   assert.match(html, /Check non-API sources/);
@@ -157,6 +158,8 @@ test("the data model initializes and can create a persisted semester", async () 
     const planningView = app.renderVals();
     assert.ok(planningView.comb.terms.some((term) => term.label === "Spring 2027"));
     assert.ok(!planningView.comb.terms.some((term) => term.label === "Fall 2026"));
+    planningView.tabs.find((tab) => tab.label === "Build").go();
+    assert.equal(app.state.builderTargetTermId, "sp27");
 
     app.state.semesterDraft = { season: "Summer", year: 2027 };
     app.createSemester();
@@ -173,11 +176,19 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(app.state.scope, "semester");
     assert.equal(app.state.semesterId, "sp27");
     assert.equal(app.state.view, "build");
-    assert.doesNotThrow(() => app.renderVals());
+    const semesterBuilder = app.renderVals();
+    assert.equal(semesterBuilder.builder.kits.length, 7);
+    semesterBuilder.builder.onKit({ target: { value: "ece3043" } });
+    assert.equal(app.state.builderKitId, "ece3043");
+    assert.equal(app.state.builderTargetTermId, "sp27");
+    app.renderVals().builder.onKit({ target: { value: "ece2031" } });
+    assert.equal(app.state.builderKitId, "ece2031");
+    assert.equal(app.state.builderTargetTermId, "sp27");
     const assignedPriceVersion = app.versionFor("ece2031", "sp27");
     const versionCount = app.kitVersions.length;
     app.updateTermKitPrice("sp27", "ece2031", "20");
     assert.equal(assignedPriceVersion.salePrice, 20);
+    assert.equal(app.kitSalePrice(app.kitMap.ece2031, "sp26"), null);
     assert.equal(app.termMap.sp27.salePrices.ece2031, undefined);
     assert.equal(app.kitVersions.length, versionCount);
     const pricingView = app.renderVals();
@@ -185,6 +196,12 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(pricingView.priceTest.rows.find((row) => row.code === "ECE 2031").saved, "$20.00");
     pricingView.priceTest.rows.find((row) => row.code === "ECE 2031").onTest({ target: { value: "25" } });
     assert.equal(app.state.priceTestValues["sp27:ece2031"], "25");
+    app.startKitEdit("ece2031", "future");
+    app.builderDraft.salePrice = "22";
+    app.saveKitVersion();
+    assert.equal(app.kitSalePrice(app.kitMap.ece2031, "sp27"), 22);
+    assert.equal(app.kitSalePrice(app.kitMap.ece2031, "sp26"), null);
+    assert.equal(app.renderVals().kitsCards.find((kit) => kit.code === "ECE 2031").salePrice, 22);
     app.toggleTermKitOffering("sp27", "ece3043");
     assert.equal(app.termMap.sp27.kitOfferings.ece3043, false);
     assert.equal(app.sales(app.kitMap.ece3043, "sp27").sold, 0);
