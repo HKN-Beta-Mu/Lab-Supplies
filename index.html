@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-  <meta name="labkit-build" content="2026.10.06.14">
+  <meta name="labkit-build" content="2026.10.06.16">
 <title>LabKit · Component Procurement</title>
 <link rel="stylesheet" href="./src/auth.css">
 <script type="module" src="./src/firebase.js"></script>
@@ -65,7 +65,7 @@
 
 <aside id="labkit-auth-session" class="labkit-auth-session" aria-label="Signed-in account" hidden>
   <span id="labkit-session-user"></span>
-  <span class="labkit-build-id">v2026.10.06.15</span>
+  <span class="labkit-build-id">v2026.10.06.16</span>
   <button id="labkit-session-sign-out" type="button">Sign out</button>
 </aside>
 
@@ -1327,8 +1327,21 @@ class Component extends DCLogic {
   applySavedData(saved){
     if(!saved)return;
     if(saved.state){
-      const transient={partId:null,modalTab:'overview',toast:null,sidebarOpen:false,orderOpen:null,semesterForm:false,semesterSuggestion:null,semesterSuggesting:false,semesterError:'',quoteLoading:false,quoteMessage:'',orderForm:false,historyPanel:false,kitForm:false,supplierFormOpen:false,supplierEditingId:null,supplierAiBusy:false,supplierAiMessage:'',flagDraft:'',specDraftKey:'',specDraftValue:'',aiBusy:'',aiMessage:'',aiDescriptionDraft:'',aiReplacementResults:[],forecastAiBusy:false,forecastAiMessage:'',priceTestOpen:false,priceTestValues:{}};
-      this.state={...this.state,...saved.state,...transient};
+      // Shared snapshots intentionally contain only procurement-model state.
+      // Never let a background save acknowledgement, session poll, or conflict
+      // merge replace this browser's navigation, open overlays, or form drafts.
+      // Doing so used to close component/vendor/history windows while someone
+      // was typing, even when the "newer" snapshot was an acknowledgement of
+      // that same browser's save.
+      const shared=saved.state;
+      this.state={
+        ...this.state,
+        overrides:shared.overrides&&typeof shared.overrides==='object'?shared.overrides:this.state.overrides,
+        statusOv:shared.statusOv&&typeof shared.statusOv==='object'?shared.statusOv:this.state.statusOv,
+        vendorPolicy:typeof shared.vendorPolicy==='string'?shared.vendorPolicy:this.state.vendorPolicy,
+        lineVendor:shared.lineVendor&&typeof shared.lineVendor==='object'?shared.lineVendor:this.state.lineVendor,
+        lineSubstitute:shared.lineSubstitute&&typeof shared.lineSubstitute==='object'?shared.lineSubstitute:this.state.lineSubstitute,
+      };
     }
     if(Array.isArray(saved.terms)){
       if(saved.historicalDataVersion===this.historicalDataVersion){

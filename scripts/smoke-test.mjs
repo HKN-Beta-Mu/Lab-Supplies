@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.06\.14"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.06\.16"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -387,6 +387,37 @@ test("the app cannot queue default data before the remote snapshot is hydrated",
     } } });
     app.persistData();
     assert.equal(saves, 1);
+
+    app.setState({
+      partId: "hct00",
+      modalTab: "vendors",
+      supplierFormOpen: true,
+      supplierEditingId: "manual-hct00-jameco",
+      supplierDraft: { ...app.state.supplierDraft, vendor: "Jameco", sourceText: "draft listing text" },
+      historyPanel: true,
+    });
+    app.onSharedDataLoaded({ detail: { data: {
+      state: {
+        overrides: { ece2031: 250 },
+        statusOv: {},
+        vendorPolicy: "best",
+        lineVendor: { "sp27:hct00": "Jameco" },
+        lineSubstitute: {},
+        // A legacy snapshot may still contain old browser-only fields. They
+        // must not be allowed to dismiss this browser's active work.
+        partId: null,
+        modalTab: "overview",
+        supplierFormOpen: false,
+        historyPanel: false,
+      },
+    } } });
+    assert.equal(app.state.partId, "hct00");
+    assert.equal(app.state.modalTab, "vendors");
+    assert.equal(app.state.supplierFormOpen, true);
+    assert.equal(app.state.supplierEditingId, "manual-hct00-jameco");
+    assert.equal(app.state.supplierDraft.sourceText, "draft listing text");
+    assert.equal(app.state.historyPanel, true);
+    assert.equal(app.state.lineVendor["sp27:hct00"], "Jameco");
   } finally {
     delete globalThis.window;
   }
