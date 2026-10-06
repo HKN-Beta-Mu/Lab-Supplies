@@ -9,10 +9,12 @@ not be copied into the website or Apps Script.
 
 It adds these tabs without changing the existing default tab:
 
-- `Components`, `Kits`, `KitItems`, `KitItemRequirements`
-- `Semesters`, `SalesSummary`, `SemesterKits`, `Inventory`, `PackedKitInventory`
+- `Components`, `Kits`, `KitItems`, `KitItemRequirements`, `KitVersions`,
+  `KitLineupVersions`, `SemesterKitVersions`
+- `Semesters`, `SalesSummary`, `SemesterKits`, `Inventory`, `PackedKitInventory`,
+  `BagInventory`
 - `VendorQuotes`, `Orders`, `OrderLines`, `Alternatives`
-- `Users`, `AuditLog`, `AppState`
+- `Users`, `AuditLog`, `ChangeHistory`, `AppState`
 
 It also reconciles `Users` to the one dedicated LabKit account,
 `HKNLabSuppliesGatech@gmail.com`. Running it again is safe when the header rows
@@ -171,9 +173,9 @@ For the inventory, versioned-kit, order-history, AI-planning, and verified-prici
 
 1. Replace the Apps Script `Code.gs` with the current repository copy and save.
 2. Run `initializeLabKit` once more. This creates `KitVersions`,
-   `SemesterKitVersions`, and `ChangeHistory`, and safely appends the new
-   packed-inventory and order columns. Existing matching tabs and data are
-   retained.
+   `SemesterKitVersions`, `ChangeHistory`, and `BagInventory`, and safely
+   appends the new packed-inventory, kit-version packaging, and order columns.
+   Existing matching tabs and data are retained.
 3. Replace the Apps Script `Index.html` with the current generated copy in
    `apps-script/Index.html` and save.
 4. Open **Deploy → Manage deployments**, edit the active web app, choose

@@ -45,6 +45,7 @@ const LABKIT_SCHEMAS = Object.freeze({
   KitVersions: Object.freeze([
     "id", "kit_id", "version_number", "label", "effective_from", "effective_to",
     "items_json", "source", "created_at", "updated_at", "version", "sale_price",
+    "bag_type_id",
   ]),
   KitLineupVersions: Object.freeze([
     "id", "version_number", "label", "kit_ids_json", "source", "created_at",
@@ -74,6 +75,11 @@ const LABKIT_SCHEMAS = Object.freeze({
   PackedKitInventory: Object.freeze([
     "id", "kit_id", "quantity", "reserved", "faulty", "location", "counted_at",
     "note", "updated_at", "version", "prepared", "sold", "basis_semester_id",
+  ]),
+  BagInventory: Object.freeze([
+    "id", "name", "size", "on_hand", "reserved", "available", "location",
+    "counted_at", "note", "preferred_vendor", "product_url", "pack_quantity",
+    "pack_price", "updated_at", "version",
   ]),
   VendorQuotes: Object.freeze([
     "id", "component_id", "vendor", "vendor_sku", "quantity_break", "unit_price",
@@ -1414,7 +1420,7 @@ function validateSnapshot_(value) {
 
 function syncSnapshotToTables_(snapshot, version, now, email) {
   const spreadsheet = getSpreadsheet_();
-  ["KitLineupVersions", "Semesters", "SemesterKits"].forEach(function (name) {
+  ["KitVersions", "KitLineupVersions", "Semesters", "SemesterKits", "BagInventory"].forEach(function (name) {
     ensureSheet_(spreadsheet, name, LABKIT_SCHEMAS[name]);
   });
   const catalog = snapshot.catalog;
@@ -1430,6 +1436,8 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
   const inventory = isPlainObject_(snapshot.inventory) ? snapshot.inventory : {};
   const componentInventory = isPlainObject_(inventory.components) ? inventory.components : {};
   const packedKitInventory = isPlainObject_(inventory.packedKits) ? inventory.packedKits : {};
+  const bagInventory = isPlainObject_(inventory.bags) ? inventory.bags : {};
+  const bagTypes = arrayOrEmpty_(snapshot.bagTypes);
   const supplierQuotes = isPlainObject_(snapshot.supplierQuotes) ? snapshot.supplierQuotes : {};
 
   replaceObjectRows_(getSheet_("Components"), LABKIT_SCHEMAS.Components,
@@ -1442,7 +1450,7 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         manufacturer: item.mfr,
         package: item.pkg,
         description: item.role,
-        active: kit.active !== false,
+        active: true,
         unit_cost: item.base,
         stock_quantity: isPlainObject_(componentInventory[item.id])
           ? numberOrZero_(componentInventory[item.id].onHand)
@@ -1464,7 +1472,7 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         name: kit.name,
         kind: kit.individual ? "individual" : "kit",
         favorite: Boolean(kit.fav),
-        active: true,
+        active: kit.active !== false,
         spring_2026_json: jsonCell_(kit.sp26 || {}),
         series_key: kit.seriesKey,
         updated_at: now,
@@ -1524,6 +1532,7 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         sale_price: item.salePrice === null || item.salePrice === undefined
           ? ""
           : numberOrZero_(item.salePrice),
+        bag_type_id: String(item.bagTypeId || ""),
       };
     }));
 
@@ -1611,6 +1620,10 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         && isPlainObject_(term.inventoryAllocation.packedKits)
         ? numberOrZero_(term.inventoryAllocation.packedKits[kit.id])
         : 0;
+      const adjustment = isPlainObject_(term.planningKitAdjustments)
+        && isPlainObject_(term.planningKitAdjustments[kit.id])
+        ? term.planningKitAdjustments[kit.id]
+        : {};
       const offered = !isPlainObject_(term.kitOfferings) || term.kitOfferings[kit.id] !== false;
       const assignedVersionId = isPlainObject_(term.kitVersions) ? term.kitVersions[kit.id] : "";
       const assignedVersion = kitVersionById[assignedVersionId];
@@ -1625,17 +1638,25 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
       const salePrice = priceValue === undefined || priceValue === null || priceValue === ""
         ? ""
         : Number(priceValue);
-      const units = term.actualPending === true ? planned : sold;
+      const planning = (statusOverrides[term.id] || term.status) === "Planning";
+      const units = planning || term.actualPending === true ? planned : sold;
+      const onHand = planning && adjustment.packed !== undefined
+        ? numberOrZero_(adjustment.packed)
+        : (term.id === "sp26" ? numberOrZero_(spring.remaining) : allocation);
+      const faulty = planning && adjustment.faulty !== undefined
+        ? numberOrZero_(adjustment.faulty)
+        : (term.id === "sp26" ? numberOrZero_(spring.faulty) : 0);
+      const toPurchase = planning && adjustment.purchase !== undefined
+        ? numberOrZero_(adjustment.purchase)
+        : (term.id === "sp26" ? numberOrZero_(spring.purchase) : Math.max(0, planned - allocation));
       semesterKitRows.push({
         id: String(term.id) + ":" + String(kit.id),
         semester_id: term.id,
         kit_id: kit.id,
         sold: sold,
-        on_hand: term.id === "sp26" ? numberOrZero_(spring.remaining) : allocation,
-        faulty: term.id === "sp26" ? numberOrZero_(spring.faulty) : 0,
-        to_purchase: term.id === "sp26"
-          ? numberOrZero_(spring.purchase)
-          : Math.max(0, planned - allocation),
+        on_hand: onHand,
+        faulty: faulty,
+        to_purchase: toPurchase,
         forecast_override: isPlainObject_(state.overrides) ? state.overrides[kit.id] : "",
         offered: offered,
         sale_price: salePrice,
@@ -1682,6 +1703,30 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         counted_at: String(row.countedAt || ""),
         basis_semester_id: String(row.basisTermId || "fa26"),
         note: String(row.note || ""),
+        updated_at: now,
+        version: version,
+      };
+    }));
+
+  replaceObjectRows_(getSheet_("BagInventory"), LABKIT_SCHEMAS.BagInventory,
+    bagTypes.map(function (bag) {
+      const row = isPlainObject_(bagInventory[bag.id]) ? bagInventory[bag.id] : {};
+      const onHand = numberOrZero_(row.onHand);
+      const reserved = numberOrZero_(row.reserved);
+      return {
+        id: String(bag.id),
+        name: String(bag.name || ""),
+        size: String(bag.size || ""),
+        on_hand: onHand,
+        reserved: reserved,
+        available: Math.max(0, onHand - reserved),
+        location: String(row.location || ""),
+        counted_at: String(row.countedAt || ""),
+        note: String(row.note || bag.note || ""),
+        preferred_vendor: String(bag.preferredVendor || ""),
+        product_url: String(bag.productUrl || ""),
+        pack_quantity: Math.max(1, numberOrZero_(bag.packQuantity) || 1),
+        pack_price: bag.packPrice === null || bag.packPrice === undefined ? "" : numberOrZero_(bag.packPrice),
         updated_at: now,
         version: version,
       };

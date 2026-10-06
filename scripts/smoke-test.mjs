@@ -13,12 +13,14 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.05\.7"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.05\.8"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /Refresh APIs \+ AI review/);
   assert.match(html, /Check non-API sources/);
-  assert.match(html, /Gemini forecast review/);
+  assert.match(html, /Try Gemini review/);
+  assert.match(html, /How the number is calculated/);
+  assert.match(html, /Packaging bags/);
   assert.match(html, /Wire spool yield/);
   assert.match(html, /link-only rows never participate/);
   assert.match(html, /Newark only/);
@@ -91,6 +93,9 @@ test("the data model initializes and can create a persisted semester", async () 
 
     assert.equal(app.catalog.length, 53);
     assert.equal(app.kits.length, 7);
+    assert.equal(app.bagTypes.length, 4);
+    assert.equal(app.versionFor("ece2031", "fa26").bagTypeId, "bag-ece2031");
+    assert.equal(app.versionFor("wirekit", "fa26").bagTypeId, "");
     assert.equal(app.kitVersions.filter((version) => version.kitId === "ece3741").length, 2);
     assert.equal(app.versionFor("ece3741", "fa25").number, 1);
     assert.equal(app.versionFor("ece3741", "sp26").number, 2);
@@ -152,14 +157,29 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(app.termMap.sp27.plannedKits.ece2031, 0);
     assert.ok(app.termMap.sp27.suggestedKits.ece2031 > 0);
     assert.equal(app.termMap.sp27.inventoryAllocation.packedKits.ece2031, 0);
+    assert.equal(Object.keys(app.termMap.sp27.plannedKits).length, app.kits.length);
     app.updateTermKitUnits("sp27", "ece2031", 20);
     assert.equal(app.termMap.sp27.inventoryAllocation.packedKits.ece2031, 10);
     assert.ok(app.termMap.sp27.inventoryAllocation.components.hct00 > 0);
     const planningView = app.renderVals();
+    const planningCard = planningView.kitsCards.find((kit) => kit.code === "ECE 2031");
+    assert.equal(planningCard.status, "Planning");
+    assert.deepEqual(planningCard.planFields.map((field) => field.label), [
+      "Planned demand", "Packed usable", "Faulty / unusable", "To assemble",
+    ]);
+    assert.equal(app.bagNeed("bag-ece2031", ["sp27"]).gross, 10);
     assert.ok(planningView.comb.terms.some((term) => term.label === "Spring 2027"));
     assert.ok(!planningView.comb.terms.some((term) => term.label === "Fall 2026"));
     planningView.tabs.find((tab) => tab.label === "Build").go();
     assert.equal(app.state.builderTargetTermId, "sp27");
+    assert.match(app.renderVals().builder.forecastLabel, /Use forecast/);
+
+    app.setState({ scope: "global", gview: "accuracy", forecastTermId: "sp27" });
+    const forecastView = app.renderVals().acc;
+    assert.equal(forecastView.actualLabel, "Current plan");
+    assert.equal(forecastView.aiStatus, "History model active");
+    assert.match(forecastView.method, /three most recent completed Spring semesters/);
+    assert.match(forecastView.trendRows.find((row) => row.code === "ECE 2031").reason, /Spring/);
 
     app.state.semesterDraft = { season: "Summer", year: 2027 };
     app.createSemester();
@@ -224,6 +244,8 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.ok(lastSaved.lineupVersions.length >= 1);
     assert.equal(lastSaved.inventory.packedKits.ece2031.prepared, 238);
     assert.equal(lastSaved.supplierReferenceDataVersion, "2026-10-05-v1");
+    assert.equal(lastSaved.dataSchemaVersion, "2026-10-06-v3");
+    assert.equal(lastSaved.bagTypes.length, 4);
     assert.equal(lastSaved.state.priceTestValues, undefined);
     assert.equal(lastSaved.state.priceTestOpen, undefined);
   } finally {
@@ -584,6 +606,7 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   assert.match(source, /editorLeaseMilliseconds: 90000/);
   assert.match(source, /SalesSummary/);
   assert.match(source, /PackedKitInventory/);
+  assert.match(source, /BagInventory/);
   assert.match(source, /KitItemRequirements/);
   assert.match(source, /KitVersions/);
   assert.match(source, /KitLineupVersions/);
@@ -591,6 +614,7 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   assert.match(source, /kit_offerings_json/);
   assert.match(source, /sale_prices_json/);
   assert.match(source, /"sale_price"/);
+  assert.match(source, /"bag_type_id"/);
   assert.match(source, /assignedVersion\.salePrice/);
   assert.match(source, /ChangeHistory/);
   assert.match(source, /function suggestSemester_/);
