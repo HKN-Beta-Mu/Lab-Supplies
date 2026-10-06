@@ -47,9 +47,14 @@ let forcedSignOutStarted = false;
 const accountEmail = labKitAuthConfig.accountEmail;
 emailInput.value = accountEmail;
 
-async function signOutCurrentUser() {
-  await window.LabKitDataSource?.disconnect?.();
+async function signOutCurrentUser(force = false) {
+  const disconnected = await window.LabKitDataSource?.disconnect?.({ force });
+  if (disconnected === false) {
+    window.alert("LabKit could not finish saving yet, so sign-out was cancelled. Your changes are protected in this browser; keep this page open and try again when the connection recovers.");
+    return false;
+  }
   await signOut(auth);
+  return true;
 }
 
 window.LabKitAuth = Object.freeze({
@@ -73,7 +78,7 @@ function renderAccess(access = window.LabKitDataSource?.access) {
     watchBanner.hidden = false;
     watchMessage.textContent = "Another session took over editing. Signing this session out…";
     takeOverButton.hidden = true;
-    window.setTimeout(signOutCurrentUser, 500);
+    window.setTimeout(() => signOutCurrentUser(true), 500);
     return;
   }
   const watching = access?.canEdit === false;

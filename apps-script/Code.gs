@@ -188,6 +188,14 @@ function apiRequest(request) {
         requireRole_(user, ["admin"]);
         renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
         return apiSuccess_(refreshSupplierQuotes_(input));
+      case "generateComponentDescription":
+        requireRole_(user, ["admin"]);
+        renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
+        return apiSuccess_(generateComponentDescription_(input));
+      case "findReplacementComponents":
+        requireRole_(user, ["admin"]);
+        renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
+        return apiSuccess_(findReplacementComponents_(input));
       default:
         throw appError_("UNKNOWN_ACTION", "That LabKit action is not supported.");
     }
@@ -387,6 +395,107 @@ function suggestSemester_(input) {
     fallback.aiMessage = "Gemini was unavailable, so the safe historical baseline is shown instead.";
   }
   return fallback;
+}
+
+function componentContext_(input) {
+  const payload = requirePlainObject_(input.payload, "payload");
+  const componentId = requireString_(payload.componentId, "componentId", 128);
+  const state = readState_();
+  if (!state || !state.snapshot) {
+    throw appError_("NOT_INITIALIZED", "Save the initial LabKit data before using Gemini.");
+  }
+  const snapshot = state.snapshot;
+  const component = arrayOrEmpty_(snapshot.catalog).find(function (item) {
+    return String(item.id) === componentId;
+  });
+  if (!component) throw appError_("INVALID_INPUT", "The selected component no longer exists.");
+  const requirements = [];
+  if (String(component.note || "").trim()) {
+    requirements.push({ scope: "catalog", note: String(component.note).trim().slice(0, 500) });
+  }
+  const versions = arrayOrEmpty_(snapshot.kitVersions);
+  const sources = versions.length ? versions.map(function (versionRecord) {
+    const kit = arrayOrEmpty_(snapshot.kits).find(function (candidate) {
+      return String(candidate.id) === String(versionRecord.kitId);
+    }) || {};
+    return { scope: String(kit.code || versionRecord.kitId) + " v" + String(versionRecord.number || ""), items: versionRecord.items };
+  }) : arrayOrEmpty_(snapshot.kits).map(function (kit) {
+    return { scope: String(kit.code || kit.id), items: kit.items };
+  });
+  sources.forEach(function (source) {
+    arrayOrEmpty_(source.items).filter(function (item) {
+      return String(item.p) === componentId && String(item.note || "").trim();
+    }).forEach(function (item) {
+      requirements.push({ scope: source.scope, note: String(item.note).trim().slice(0, 500) });
+    });
+  });
+  return { componentId: componentId, component: component, requirements: requirements, snapshot: snapshot };
+}
+
+function generateComponentDescription_(input) {
+  const context = componentContext_(input);
+  const component = context.component;
+  const prompt = [
+    "Write a concise, factual catalog description for a university electronics lab-kit component.",
+    "Use only the supplied data. Do not invent ratings, compatibility, price, availability, or approval status.",
+    "Use one or two sentences, explain the teaching/lab function, and mention a critical packing requirement only when supplied.",
+    "Component: " + JSON.stringify({ name: component.name, manufacturer: component.mfr, package: component.pkg, specifications: component.specs, currentDescription: component.role }),
+    "Recorded kit requirements: " + JSON.stringify(context.requirements),
+  ].join("\n");
+  const schema = {
+    type: "object",
+    properties: { description: { type: "string" } },
+    required: ["description"],
+  };
+  const result = callGeminiJson_(prompt, schema);
+  const description = String(result && result.description || "").trim().slice(0, 1000);
+  if (!description) throw appError_("AI_EMPTY", "Gemini did not return a component description.");
+  return { description: description, message: "Gemini drafted from saved component data. Review it before applying." };
+}
+
+function findReplacementComponents_(input) {
+  const context = componentContext_(input);
+  const component = context.component;
+  const prompt = [
+    "Suggest up to five plausible replacement part numbers for a university electronics lab-kit component.",
+    "This is an engineering research shortlist, not an approval and not a live web or inventory search.",
+    "Prefer currently produced, through-hole, breadboard-friendly parts when the saved package implies through-hole use.",
+    "Never say a candidate is pin-compatible unless that fact is certain from the supplied information. Put every uncertain electrical, mechanical, polarity, or pinout detail in risks.",
+    "Component: " + JSON.stringify({ name: component.name, manufacturer: component.mfr, package: component.pkg, specifications: component.specs, description: component.role }),
+    "Non-negotiable kit requirements: " + JSON.stringify(context.requirements),
+  ].join("\n");
+  const schema = {
+    type: "object",
+    properties: {
+      candidates: {
+        type: "array",
+        maxItems: 5,
+        items: {
+          type: "object",
+          properties: {
+            partNumber: { type: "string" },
+            manufacturer: { type: "string" },
+            package: { type: "string" },
+            reason: { type: "string" },
+            risks: { type: "string" },
+          },
+          required: ["partNumber", "manufacturer", "package", "reason", "risks"],
+        },
+      },
+    },
+    required: ["candidates"],
+  };
+  const result = callGeminiJson_(prompt, schema);
+  const candidates = arrayOrEmpty_(result && result.candidates).slice(0, 5).map(function (candidate) {
+    return {
+      partNumber: String(candidate.partNumber || "").trim().slice(0, 120),
+      manufacturer: String(candidate.manufacturer || "Unspecified").trim().slice(0, 120),
+      package: String(candidate.package || "Unspecified").trim().slice(0, 120),
+      reason: String(candidate.reason || "Research lead.").trim().slice(0, 700),
+      risks: String(candidate.risks || "Verify datasheet, pinout, package, and every recorded kit requirement.").trim().slice(0, 700),
+    };
+  }).filter(function (candidate) { return candidate.partNumber; });
+  return { candidates: candidates, message: "Gemini produced research leads, not approvals or live availability. Verify manufacturer datasheets and supplier listings before saving one." };
 }
 
 function refreshSupplierQuotes_(input) {

@@ -13,10 +13,13 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.05\.2"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.05\.4"/);
   assert.match(html, /vInventory/);
-  assert.match(html, /Refresh verified quotes/);
+  assert.match(html, /Refresh APIs \+ AI review/);
   assert.match(html, /Check non-API sources/);
+  assert.match(html, /Gemini forecast review/);
+  assert.match(html, /Wire spool yield/);
+  assert.match(html, /link-only rows never participate/);
   assert.match(html, /Newark only/);
   assert.doesNotMatch(html, /<sc-for\b/);
   assert.match(html, /<template data-dc-control="for"/);
@@ -105,6 +108,16 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(ece2031Inventory.sold, "228");
     assert.equal(ece2031Inventory.onHand, "82");
     assert.doesNotMatch(logic, /mape===null/);
+    assert.equal(app.wireCalculation("wred", 63).spools, 1);
+    assert.equal(app.wireCalculation("wred", 64).spools, 2);
+    assert.equal(app.wireCalculation("wred", 64).conservative, 63);
+    assert.equal(app.componentPurchaseQuantity("wred", 20) + app.componentPurchaseQuantity("wred", 20), 2);
+    assert.equal(app.componentPurchaseQuantity("wred", 40), 1);
+    assert.match(app.wireCalculation("wred", 64).label, /100 ft ÷ 18 in = 66 nominal/);
+    assert.ok(app.supplierQuotes.wred.some((quote) => quote.productUrl.includes("734403")));
+    assert.ok(app.supplierQuotes.c100u.some((quote) => quote.productUrl.includes("330422")));
+    assert.ok(app.similar("hct20").some((candidate) => candidate.pn === "CD74HCT20E"));
+    assert.equal(app.quotePool(app.vendors("wred", 2)).some((quote) => quote.referenceOnly), false);
 
     app.supplierQuotes.hct00 = [{
       id: "mouser:test",
@@ -184,6 +197,46 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(lastSaved.kitVersions[0].items[0].note, "Must be through-hole and breadboard compatible");
     assert.ok(lastSaved.lineupVersions.length >= 1);
     assert.equal(lastSaved.inventory.packedKits.ece2031.prepared, 238);
+    assert.equal(lastSaved.supplierReferenceDataVersion, "2026-10-05-v1");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("the app cannot queue default data before the remote snapshot is hydrated", async () => {
+  const html = await read("index.html");
+  const historicalSales = await read("src/historical-sales.js");
+  const logic = html.match(/<script type="text\/x-dc"[^>]*>([\s\S]*?)<\/script>/)?.[1];
+  let saves = 0;
+  class LogicStub {
+    constructor(props) { this.props = props; this.state = {}; }
+    setState(update) {
+      const patch = typeof update === "function" ? update(this.state) : update;
+      this.state = { ...this.state, ...patch };
+    }
+    forceUpdate() {}
+  }
+  globalThis.window = {
+    confirm: () => true,
+    LabKitDataSource: {
+      kind: "apps-script",
+      ready: false,
+      load: () => null,
+      save: () => { saves += 1; },
+    },
+  };
+  try {
+    new Function(historicalSales)();
+    const App = new Function("DCLogic", "React", `${logic}\nreturn Component;`)(LogicStub, {});
+    const app = new App({});
+    app.persistData();
+    assert.equal(saves, 0);
+    app.onSharedDataLoaded({ detail: { data: {
+      historicalDataVersion: app.historicalDataVersion,
+      state: {}, catalog: app.catalog, kits: app.kits, terms: app._terms,
+    } } });
+    app.persistData();
+    assert.equal(saves, 1);
   } finally {
     delete globalThis.window;
   }
@@ -238,6 +291,10 @@ test("persistence adapter exposes the expected provider boundary", async () => {
   assert.match(source, /google\.script\.run/);
   assert.match(source, /expectedVersion/);
   assert.match(source, /VERSION_CONFLICT/);
+  assert.match(source, /REMOTE_DRAFT_KEY/);
+  assert.match(source, /beforeunload/);
+  assert.match(source, /mergeSnapshots/);
+  assert.match(source, /flush: flushRemoteChanges/);
 });
 
 test("Apps Script data adapter authenticates and seeds an empty shared sheet", async () => {
@@ -345,6 +402,104 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
   assert.equal(browser.LabKitDataSource.version, 1);
 });
 
+test("Apps Script data adapter rebases and retries without discarding an edit", async () => {
+  const source = await read("src/data-source.js");
+  const requests = [];
+  const scheduled = [];
+  const storage = new Map();
+  let successHandler;
+  let failureHandler;
+  let saveAttempts = 0;
+  const baseSnapshot = {
+    state: { overrides: {}, statusOv: {}, vendorPolicy: "best", lineVendor: {} },
+    catalog: [], kits: [], kitVersions: [], lineupVersions: [], changeLog: [], orders: [],
+    terms: [{ id: "sp27", sales: { ece2031: 200 } }],
+    inventory: { components: {}, packedKits: {} }, supplierQuotes: {}, alternatives: {},
+  };
+  const newerSnapshot = {
+    ...baseSnapshot,
+    orders: [{ id: "PO-remote", vendor: "Jameco", lines: [] }],
+  };
+  const runner = {
+    withSuccessHandler(handler) { successHandler = handler; return this; },
+    withFailureHandler(handler) { failureHandler = handler; return this; },
+    apiRequest(request) {
+      requests.push(request);
+      queueMicrotask(() => {
+        if (request.action === "bootstrap") {
+          successHandler({ ok: true, data: {
+            user: { uid: "firebase-1", email: "admin@example.com", role: "admin" },
+            state: { version: 3, snapshot: baseSnapshot },
+            access: { mode: "editor", canEdit: true, editor: { label: "Test browser" } },
+          } });
+        } else if (request.action === "saveSnapshot" && saveAttempts++ === 0) {
+          successHandler({ ok: false, error: {
+            code: "VERSION_CONFLICT",
+            message: "newer data",
+            details: { currentVersion: 4 },
+          } });
+        } else if (request.action === "syncSession") {
+          successHandler({ ok: true, data: {
+            access: { mode: "editor", canEdit: true, editor: { label: "Test browser" } },
+            state: { version: 4, snapshot: newerSnapshot },
+            version: 4,
+          } });
+        } else if (request.action === "saveSnapshot") {
+          successHandler({ ok: true, data: { version: 5, duplicate: false } });
+        } else {
+          failureHandler(new Error(`Unexpected action: ${request.action}`));
+        }
+      });
+    },
+  };
+  const listeners = new Map();
+  const browser = {
+    __LABKIT_APPS_SCRIPT__: true,
+    google: { script: { run: runner } },
+    crypto: { randomUUID: () => "conflict-test-request" },
+    location: { reload() {} },
+    localStorage: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: (key) => storage.delete(key),
+    },
+    setTimeout(callback) { scheduled.push(callback); return scheduled.length; },
+    clearTimeout() {},
+    addEventListener(name, handler) { listeners.set(name, handler); },
+    dispatchEvent(event) { listeners.get(event.type)?.(event); },
+  };
+  class EventStub {
+    constructor(type, options) { this.type = type; this.detail = options?.detail; }
+  }
+
+  new Function("window", "CustomEvent", source)(browser, EventStub);
+  await browser.LabKitDataSource.connect({
+    uid: "firebase-1",
+    getIdToken: async () => "firebase-token",
+  });
+  browser.LabKitDataSource.save({
+    ...baseSnapshot,
+    supplierReferenceDataVersion: "reference-v1",
+    terms: [{ id: "sp27", sales: { ece2031: 236 } }],
+  });
+
+  await scheduled[1]();
+  await new Promise((resolve) => setImmediate(resolve));
+  await scheduled.at(-1)();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const saves = requests.filter((request) => request.action === "saveSnapshot");
+  assert.equal(saves.length, 2);
+  assert.equal(saves[0].payload.expectedVersion, 3);
+  assert.equal(saves[1].payload.expectedVersion, 4);
+  assert.equal(saves[1].payload.snapshot.terms[0].sales.ece2031, 236);
+  assert.equal(saves[1].payload.snapshot.orders[0].id, "PO-remote");
+  assert.equal(saves[1].payload.snapshot.supplierReferenceDataVersion, "reference-v1");
+  assert.equal(browser.LabKitDataSource.version, 5);
+  assert.equal(browser.LabKitDataSource.hasUnsavedChanges, false);
+  assert.equal(storage.has("labkit.unsaved-remote-draft"), false);
+});
+
 test("Firebase browser configuration initializes through the module bridge", async () => {
   const html = await read("index.html");
   const bootstrap = await read("src/firebase.js");
@@ -410,6 +565,8 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   assert.match(source, /ChangeHistory/);
   assert.match(source, /function suggestSemester_/);
   assert.match(source, /function refreshSupplierQuotes_/);
+  assert.match(source, /function generateComponentDescription_/);
+  assert.match(source, /function findReplacementComponents_/);
   assert.match(source, /Mouser Search API/);
   assert.match(source, /DigiKey Product Information API/);
   assert.match(source, /Newark Product Search API/);

@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = "labkit.app-data";
   const SESSION_STORAGE_KEY = "labkit.session-id";
+  const REMOTE_DRAFT_KEY = "labkit.unsaved-remote-draft";
   const SCHEMA_VERSION = 1;
   const REMOTE_SAVE_DELAY_MS = 900;
   const REMOTE_RETRY_DELAY_MS = 5000;
@@ -77,7 +78,92 @@
   }
 
   function clone(value) {
+    if (value === undefined) return undefined;
     return JSON.parse(JSON.stringify(value));
+  }
+
+  function sameValue(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  function isRecord(value) {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function arrayIdentityKey(...arrays) {
+    const values = arrays.flat().filter((value) => value !== undefined);
+    if (!values.length || values.some((value) => !isRecord(value))) return null;
+    return ["id", "p", "quantity", "componentId", "kitId", "termId"].find((key) => {
+      if (values.some((value) => value[key] === undefined || value[key] === null)) return false;
+      return arrays.every((array) => {
+        const keys = array.map((value) => String(value[key]));
+        return new Set(keys).size === keys.length;
+      });
+    }) || null;
+  }
+
+  // Rebase a complete local snapshot onto a newer server snapshot. Fields the
+  // user did not touch follow the server; fields changed locally keep the local
+  // value. Collections with stable IDs are merged item-by-item so one stale tab
+  // cannot erase an unrelated edit.
+  function mergeSnapshots(baseValue, localValue, serverValue) {
+    if (sameValue(localValue, baseValue)) return clone(serverValue);
+    if (sameValue(serverValue, baseValue) || sameValue(localValue, serverValue)) {
+      return clone(localValue);
+    }
+
+    if (Array.isArray(baseValue) && Array.isArray(localValue) && Array.isArray(serverValue)) {
+      const identity = arrayIdentityKey(baseValue, localValue, serverValue);
+      if (!identity) return clone(localValue);
+      const base = new Map(baseValue.map((value) => [String(value[identity]), value]));
+      const local = new Map(localValue.map((value) => [String(value[identity]), value]));
+      const server = new Map(serverValue.map((value) => [String(value[identity]), value]));
+      const order = [
+        ...serverValue.map((value) => String(value[identity])),
+        ...localValue.map((value) => String(value[identity])),
+      ].filter((key, index, keys) => keys.indexOf(key) === index);
+
+      return order.flatMap((key) => {
+        const hadBase = base.has(key);
+        const hasLocal = local.has(key);
+        const hasServer = server.has(key);
+        if (!hasLocal) return hadBase ? [] : [clone(server.get(key))];
+        if (!hasServer) {
+          if (!hadBase || !sameValue(local.get(key), base.get(key))) return [clone(local.get(key))];
+          return [];
+        }
+        if (!hadBase) return [clone(local.get(key))];
+        return [mergeSnapshots(base.get(key), local.get(key), server.get(key))];
+      });
+    }
+
+    if (isRecord(baseValue) && isRecord(localValue) && isRecord(serverValue)) {
+      const output = {};
+      const keys = new Set([
+        ...Object.keys(baseValue),
+        ...Object.keys(serverValue),
+        ...Object.keys(localValue),
+      ]);
+      keys.forEach((key) => {
+        const hadBase = Object.prototype.hasOwnProperty.call(baseValue, key);
+        const hasLocal = Object.prototype.hasOwnProperty.call(localValue, key);
+        const hasServer = Object.prototype.hasOwnProperty.call(serverValue, key);
+        if (!hasLocal) {
+          if (!hadBase && hasServer) output[key] = clone(serverValue[key]);
+          return;
+        }
+        if (!hasServer) {
+          if (!hadBase || !sameValue(localValue[key], baseValue[key])) output[key] = clone(localValue[key]);
+          return;
+        }
+        output[key] = hadBase
+          ? mergeSnapshots(baseValue[key], localValue[key], serverValue[key])
+          : clone(localValue[key]);
+      });
+      return output;
+    }
+
+    return clone(localValue);
   }
 
   // Browser navigation and open dialogs are personal UI state. Only values
@@ -88,6 +174,8 @@
     return clone({
       historicalDataVersion: source.historicalDataVersion || null,
       orderDataVersion: source.orderDataVersion || null,
+      supplierReferenceDataVersion: source.supplierReferenceDataVersion || null,
+      dataSchemaVersion: source.dataSchemaVersion || null,
       state: {
         overrides: state.overrides || {},
         statusOv: state.statusOv || {},
@@ -117,6 +205,7 @@
     ready: false,
     version: 0,
     currentData: null,
+    baseData: null,
     authUser: null,
     backendUser: null,
     connectedUid: "",
@@ -126,12 +215,80 @@
     lastSavedSerialized: "",
     saveTimer: null,
     inFlight: false,
+    inFlightSerialized: "",
+    savePromise: null,
     retryCount: 0,
     access: { mode: "connecting", canEdit: false, editor: null },
     syncTimer: null,
     syncInFlight: false,
     status: "Connecting to shared sheet…",
   };
+
+  function readRemoteDraft(uid) {
+    try {
+      const raw = global.localStorage?.getItem(REMOTE_DRAFT_KEY);
+      if (!raw) return null;
+      const draft = JSON.parse(raw);
+      if (
+        !draft
+        || draft.schemaVersion !== SCHEMA_VERSION
+        || draft.uid !== uid
+        || !isRecord(draft.snapshot)
+      ) return null;
+      return draft;
+    } catch (error) {
+      console.warn("[LabKit] Could not read the unsaved-change recovery copy.", error);
+      return null;
+    }
+  }
+
+  function writeRemoteDraft(snapshot = remote.pending) {
+    if (!snapshot || !remote.connectedUid) return;
+    try {
+      global.localStorage?.setItem(REMOTE_DRAFT_KEY, JSON.stringify({
+        schemaVersion: SCHEMA_VERSION,
+        uid: remote.connectedUid,
+        baseVersion: remote.version,
+        savedAt: new Date().toISOString(),
+        baseSnapshot: remote.baseData,
+        snapshot,
+      }));
+    } catch (error) {
+      console.warn("[LabKit] Could not keep an unsaved-change recovery copy.", error);
+    }
+  }
+
+  function clearRemoteDraft() {
+    try {
+      global.localStorage?.removeItem(REMOTE_DRAFT_KEY);
+    } catch (error) {
+      console.warn("[LabKit] Could not clear the saved recovery copy.", error);
+    }
+  }
+
+  function hasUnsavedRemoteChanges() {
+    return Boolean(remote.pending || remote.inFlight);
+  }
+
+  function restoreRemoteDraft(uid, serverData = remote.baseData) {
+    const draft = readRemoteDraft(uid);
+    if (!draft) return false;
+    const recovered = mergeSnapshots(
+      draft.baseSnapshot || serverData || {},
+      draft.snapshot,
+      serverData || {},
+    );
+    const recoveredSerialized = JSON.stringify(sharedSnapshot(recovered));
+    if (recoveredSerialized === remote.lastSavedSerialized) {
+      clearRemoteDraft();
+      return false;
+    }
+    remote.currentData = recovered;
+    remote.pending = recovered;
+    remote.pendingSerialized = recoveredSerialized;
+    writeRemoteDraft(recovered);
+    return true;
+  }
 
   function setRemoteStatus(status, phase = "idle") {
     remote.status = status;
@@ -213,18 +370,30 @@
       if (result.state?.snapshot) {
         const incomingVersion = Number(result.state.version || 0);
         if (remote.pending || remote.inFlight) {
-          // A focus/session poll can return the old server snapshot while a
-          // local edit is waiting for its debounced save. Applying it here
-          // would visibly resurrect deleted semesters or discard new rows.
           if (incomingVersion > remote.version) {
-            setRemoteStatus("Newer shared data exists — finish or reload", "conflict");
+            const local = remote.pending || remote.currentData;
+            const server = clone(result.state.snapshot);
+            const merged = mergeSnapshots(remote.baseData || remote.currentData || {}, local, server);
+            remote.version = incomingVersion;
+            remote.baseData = server;
+            remote.currentData = clone(merged);
+            remote.pending = merged;
+            remote.pendingSerialized = JSON.stringify(merged);
+            writeRemoteDraft(merged);
+            emit("labkit:data-loaded", {
+              data: clone(merged),
+              version: remote.version,
+              recovered: true,
+              user: remote.backendUser,
+            });
             emit("labkit:data-conflict", {
-              message: "Newer shared data arrived while this session had unsaved changes.",
+              message: "A newer saved version was merged with your unsaved changes. Saving the combined version now.",
               currentVersion: incomingVersion,
             });
           }
         } else {
           remote.version = incomingVersion;
+          remote.baseData = clone(result.state.snapshot);
           remote.currentData = clone(result.state.snapshot);
           remote.lastSavedSerialized = JSON.stringify(sharedSnapshot(remote.currentData));
           emit("labkit:data-loaded", {
@@ -235,13 +404,15 @@
         }
       } else {
         remote.version = Number(result.version || remote.version);
-        if (!wasEditor && remote.access.canEdit) {
-          emit("labkit:data-loaded", {
-            data: remote.currentData ? clone(remote.currentData) : null,
-            version: remote.version,
-            user: remote.backendUser,
-          });
-        }
+      }
+      if (!wasEditor && remote.access.canEdit) {
+        const recovered = restoreRemoteDraft(remote.connectedUid);
+        emit("labkit:data-loaded", {
+          data: remote.currentData ? clone(remote.currentData) : null,
+          version: remote.version,
+          recovered,
+          user: remote.backendUser,
+        });
       }
       if (remote.access.canEdit) {
         setRemoteStatus("Editing · shared sheet", "ready");
@@ -263,70 +434,152 @@
     remote.saveTimer = global.setTimeout(flushRemoteSave, delay);
   }
 
-  async function flushRemoteSave() {
+  async function reconcileVersionConflict(snapshot) {
+    const idToken = await remote.authUser.getIdToken();
+    const result = await callAppsScript({
+      action: "syncSession",
+      idToken,
+      sessionId: browserSessionId,
+      sessionLabel: browserSessionLabel,
+      payload: { knownVersion: remote.version },
+    });
+    updateAccess(result.access);
+    if (!remote.access.canEdit) return false;
+
+    const server = result.state?.snapshot ? clone(result.state.snapshot) : remote.baseData;
+    const incomingVersion = Number(result.state?.version ?? result.version ?? remote.version);
+    if (!server || incomingVersion <= remote.version) return false;
+
+    const local = remote.pending || snapshot;
+    const merged = mergeSnapshots(remote.baseData || {}, local, server);
+    remote.version = incomingVersion;
+    remote.baseData = server;
+    remote.currentData = clone(merged);
+    remote.pending = merged;
+    remote.pendingSerialized = JSON.stringify(merged);
+    remote.retryCount = 0;
+    writeRemoteDraft(merged);
+    emit("labkit:data-loaded", {
+      data: clone(merged),
+      version: remote.version,
+      recovered: true,
+      user: remote.backendUser,
+    });
+    emit("labkit:data-conflict", {
+      message: "A newer saved version was merged with your changes. Nothing was discarded.",
+      currentVersion: incomingVersion,
+    });
+    return true;
+  }
+
+  function flushRemoteSave() {
     remote.saveTimer = null;
-    if (!remote.ready || !remote.access.canEdit || remote.inFlight || !remote.pending || !remote.authUser) return;
+    if (remote.inFlight) return remote.savePromise || Promise.resolve(false);
+    if (!remote.ready || !remote.access.canEdit || !remote.pending || !remote.authUser) {
+      return Promise.resolve(!hasUnsavedRemoteChanges());
+    }
 
     const snapshot = remote.pending;
     const serialized = remote.pendingSerialized;
     remote.pending = null;
     remote.pendingSerialized = "";
-    if (serialized === remote.lastSavedSerialized) return;
+    if (serialized === remote.lastSavedSerialized) {
+      clearRemoteDraft();
+      return Promise.resolve(true);
+    }
 
     remote.inFlight = true;
+    remote.inFlightSerialized = serialized;
     setRemoteStatus("Saving to shared sheet…", "saving");
-    try {
-      const idToken = await remote.authUser.getIdToken();
-      const result = await callAppsScript({
-        action: "saveSnapshot",
-        idToken,
-        sessionId: browserSessionId,
-        sessionLabel: browserSessionLabel,
-        requestId: requestId(),
-        payload: {
-          snapshot,
-          expectedVersion: remote.version,
-        },
-      });
-      remote.version = Number(result.version || remote.version);
-      remote.currentData = snapshot;
-      remote.lastSavedSerialized = serialized;
-      remote.retryCount = 0;
-      setRemoteStatus("Saved to shared sheet", "saved");
-    } catch (error) {
-      if (error.code === "EDITOR_LOCKED") {
-        remote.pending = null;
-        remote.pendingSerialized = "";
-        updateAccess(error.details?.access);
-        setRemoteStatus("Watching · another session is editing", "readonly");
-      } else if (error.code === "VERSION_CONFLICT") {
-        remote.pending = null;
-        remote.pendingSerialized = "";
-        setRemoteStatus("Newer shared data exists — reload", "conflict");
-        emit("labkit:data-conflict", {
-          message: error.message,
-          currentVersion: error.details?.currentVersion,
+    remote.savePromise = (async () => {
+      try {
+        const idToken = await remote.authUser.getIdToken();
+        const result = await callAppsScript({
+          action: "saveSnapshot",
+          idToken,
+          sessionId: browserSessionId,
+          sessionLabel: browserSessionLabel,
+          requestId: requestId(),
+          payload: {
+            snapshot,
+            expectedVersion: remote.version,
+          },
         });
-      } else {
-        if (!remote.pending) {
-          remote.pending = snapshot;
-          remote.pendingSerialized = serialized;
+        remote.version = Number(result.version || remote.version);
+        remote.baseData = clone(snapshot);
+        remote.currentData = remote.pending ? clone(remote.pending) : clone(snapshot);
+        remote.lastSavedSerialized = serialized;
+        remote.retryCount = 0;
+        if (remote.pending) writeRemoteDraft(remote.pending);
+        else clearRemoteDraft();
+        setRemoteStatus("Saved to shared sheet", "saved");
+        return true;
+      } catch (error) {
+        if (error.code === "EDITOR_LOCKED") {
+          if (!remote.pending) {
+            remote.pending = snapshot;
+            remote.pendingSerialized = serialized;
+          }
+          writeRemoteDraft(remote.pending);
+          updateAccess(error.details?.access);
+          setRemoteStatus("Unsaved changes kept · another session is editing", "readonly");
+        } else if (error.code === "VERSION_CONFLICT") {
+          if (!remote.pending) {
+            remote.pending = snapshot;
+            remote.pendingSerialized = serialized;
+          }
+          writeRemoteDraft(remote.pending);
+          setRemoteStatus("Reconciling newer saved data…", "saving");
+          try {
+            const reconciled = await reconcileVersionConflict(snapshot);
+            if (!reconciled) throw error;
+            scheduleRemoteSave(0);
+          } catch (reconcileError) {
+            setRemoteStatus("Unsaved changes kept safely · retrying…", "error");
+            console.warn("[LabKit] Could not reconcile the newer sheet version yet.", reconcileError);
+          }
+        } else {
+          if (!remote.pending) {
+            remote.pending = snapshot;
+            remote.pendingSerialized = serialized;
+          }
+          writeRemoteDraft(remote.pending);
+          remote.retryCount += 1;
+          const willRetry = remote.retryCount <= MAX_AUTOMATIC_RETRIES;
+          setRemoteStatus(
+            willRetry ? "Save interrupted — retrying…" : "Unsaved changes kept safely — retry when online",
+            "error",
+          );
+          if (willRetry) scheduleRemoteSave(REMOTE_RETRY_DELAY_MS);
+          console.warn("[LabKit] Shared-sheet save failed.", error);
         }
-        remote.retryCount += 1;
-        const willRetry = remote.retryCount <= MAX_AUTOMATIC_RETRIES;
-        setRemoteStatus(
-          willRetry ? "Save interrupted — retrying…" : "Save failed — make another change to retry",
-          "error",
-        );
-        if (willRetry) scheduleRemoteSave(REMOTE_RETRY_DELAY_MS);
-        console.warn("[LabKit] Shared-sheet save failed.", error);
+        return false;
+      } finally {
+        remote.inFlight = false;
+        remote.inFlightSerialized = "";
+        remote.savePromise = null;
+        if (remote.pending && !remote.saveTimer && remote.retryCount <= MAX_AUTOMATIC_RETRIES) {
+          scheduleRemoteSave();
+        }
       }
-    } finally {
-      remote.inFlight = false;
-      if (remote.pending && !remote.saveTimer && remote.retryCount <= MAX_AUTOMATIC_RETRIES) {
-        scheduleRemoteSave();
-      }
+    })();
+    return remote.savePromise;
+  }
+
+  async function flushRemoteChanges() {
+    if (!isAppsScript) return true;
+    global.clearTimeout(remote.saveTimer);
+    remote.saveTimer = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (!hasUnsavedRemoteChanges()) return true;
+      if (!remote.ready || !remote.access.canEdit) return false;
+      if (remote.inFlight && remote.savePromise) await remote.savePromise;
+      else await flushRemoteSave();
+      global.clearTimeout(remote.saveTimer);
+      remote.saveTimer = null;
+      if (remote.retryCount > MAX_AUTOMATIC_RETRIES) break;
     }
+    return !hasUnsavedRemoteChanges();
   }
 
   async function connectRemote(user) {
@@ -358,22 +611,28 @@
         const state = result.state || null;
         remote.backendUser = result.user || null;
         remote.version = Number(state?.version || 0);
-        remote.currentData = state?.snapshot ? clone(state.snapshot) : null;
-        remote.lastSavedSerialized = remote.currentData
-          ? JSON.stringify(sharedSnapshot(remote.currentData))
+        const serverData = state?.snapshot ? clone(state.snapshot) : null;
+        remote.baseData = serverData ? clone(serverData) : null;
+        remote.currentData = serverData ? clone(serverData) : null;
+        remote.lastSavedSerialized = serverData
+          ? JSON.stringify(sharedSnapshot(serverData))
           : "";
         remote.ready = true;
         remote.retryCount = 0;
         updateAccess(result.access);
-        setRemoteStatus(remote.access.canEdit
-          ? "Editing · shared sheet"
-          : "Watching · another session is editing",
-        remote.access.canEdit ? "ready" : "readonly");
+
+        if (remote.access.canEdit) restoreRemoteDraft(user.uid, serverData);
+
         emit("labkit:data-loaded", {
           data: remote.currentData ? clone(remote.currentData) : null,
           version: remote.version,
+          recovered: Boolean(remote.pending),
           user: remote.backendUser,
         });
+        setRemoteStatus(remote.access.canEdit
+          ? (remote.pending ? "Recovered unsaved changes · saving…" : "Editing · shared sheet")
+          : "Watching · another session is editing",
+        remote.access.canEdit ? (remote.pending ? "saving" : "ready") : "readonly");
         if (remote.pending) scheduleRemoteSave(0);
         scheduleSessionSync();
         return { user: remote.backendUser, state, access: clone(remote.access) };
@@ -388,8 +647,16 @@
     return remote.connectPromise;
   }
 
-  async function disconnectRemote() {
-    if (!isAppsScript) return;
+  async function disconnectRemote(options = {}) {
+    if (!isAppsScript) return true;
+    const force = options?.force === true;
+    if (!force && remote.access.canEdit && hasUnsavedRemoteChanges()) {
+      const saved = await flushRemoteChanges();
+      if (!saved) {
+        setRemoteStatus("Could not sign out · unsaved changes are still protected locally", "error");
+        return false;
+      }
+    }
     global.clearTimeout(remote.saveTimer);
     global.clearTimeout(remote.syncTimer);
     if (remote.authUser) {
@@ -407,6 +674,7 @@
     remote.ready = false;
     remote.version = 0;
     remote.currentData = null;
+    remote.baseData = null;
     remote.authUser = null;
     remote.backendUser = null;
     remote.connectedUid = "";
@@ -415,12 +683,15 @@
     remote.pendingSerialized = "";
     remote.lastSavedSerialized = "";
     remote.inFlight = false;
+    remote.inFlightSerialized = "";
+    remote.savePromise = null;
     remote.syncTimer = null;
     remote.syncInFlight = false;
     remote.access = { mode: "connecting", canEdit: false, editor: null };
     remote.retryCount = 0;
     remote.status = "Connecting to shared sheet…";
     global.document?.body?.classList.remove("labkit-read-only");
+    return true;
   }
 
   async function runEditorAction(action, payload) {
@@ -462,6 +733,14 @@
       sessionLabel: browserSessionLabel,
     });
     updateAccess(result.access);
+    if (remote.access.canEdit && restoreRemoteDraft(remote.connectedUid)) {
+      emit("labkit:data-loaded", {
+        data: clone(remote.currentData),
+        version: remote.version,
+        recovered: true,
+        user: remote.backendUser,
+      });
+    }
     setRemoteStatus("Editing · took over this session", "ready");
     if (remote.pending) scheduleRemoteSave(0);
     return clone(remote.access);
@@ -473,6 +752,21 @@
       global.clearTimeout(remote.syncTimer);
       remote.syncTimer = null;
       syncRemoteSession();
+    });
+    global.addEventListener("visibilitychange", () => {
+      if (global.document?.visibilityState === "hidden" && hasUnsavedRemoteChanges()) {
+        global.clearTimeout(remote.saveTimer);
+        remote.saveTimer = null;
+        flushRemoteSave();
+      }
+    });
+    global.addEventListener("pagehide", () => {
+      if (hasUnsavedRemoteChanges()) flushRemoteSave();
+    });
+    global.addEventListener("beforeunload", (event) => {
+      if (!hasUnsavedRemoteChanges()) return;
+      event.preventDefault();
+      event.returnValue = "";
     });
   }
 
@@ -510,6 +804,10 @@
       return isAppsScript ? remote.access.canEdit === true : true;
     },
 
+    get hasUnsavedChanges() {
+      return isAppsScript ? hasUnsavedRemoteChanges() : false;
+    },
+
     load() {
       return isAppsScript
         ? (remote.currentData ? clone(remote.currentData) : null)
@@ -522,13 +820,22 @@
       const snapshot = sharedSnapshot(data);
       const serialized = JSON.stringify(snapshot);
       if (
-        serialized === remote.lastSavedSerialized
-        || serialized === remote.pendingSerialized
+        serialized === remote.pendingSerialized
+        || serialized === remote.inFlightSerialized
       ) return true;
+      if (serialized === remote.lastSavedSerialized && !remote.inFlight) {
+        remote.pending = null;
+        remote.pendingSerialized = "";
+        global.clearTimeout(remote.saveTimer);
+        remote.saveTimer = null;
+        clearRemoteDraft();
+        return true;
+      }
 
       remote.pending = snapshot;
       remote.pendingSerialized = serialized;
       remote.retryCount = 0;
+      writeRemoteDraft(snapshot);
       if (remote.ready) scheduleRemoteSave();
       return true;
     },
@@ -553,7 +860,17 @@
       return runEditorAction("refreshSupplierQuotes", payload);
     },
 
+    generateComponentDescription(payload) {
+      return runEditorAction("generateComponentDescription", payload);
+    },
+
+    findReplacementComponents(payload) {
+      return runEditorAction("findReplacementComponents", payload);
+    },
+
     takeOver: takeOverRemote,
+
+    flush: flushRemoteChanges,
 
     connect: connectRemote,
     disconnect: disconnectRemote,
