@@ -83,15 +83,17 @@ const LABKIT_SCHEMAS = Object.freeze({
   ]),
   VendorQuotes: Object.freeze([
     "id", "component_id", "vendor", "vendor_sku", "quantity_break", "unit_price",
-    "quoted_at", "expires_at", "created_by", "version",
+    "quoted_at", "expires_at", "created_by", "version", "product_url", "shipping_cost",
+    "lead_time", "stock_available", "notes",
   ]),
   Orders: Object.freeze([
     "id", "order_number", "vendor", "date", "status", "receipt_url", "created_by",
     "created_at", "semester_ids_json", "updated_at", "version", "notes",
+    "carrier", "tracking_number", "tracking_url",
   ]),
   OrderLines: Object.freeze([
     "id", "order_id", "component_id", "quantity", "unit_price",
-    "semester_ids_json", "updated_at", "version",
+    "vendor", "semester_ids_json", "updated_at", "version",
   ]),
   Alternatives: Object.freeze([
     "id", "component_id", "part_number", "manufacturer", "package", "match",
@@ -1752,6 +1754,11 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
             expires_at: "",
             created_by: email,
             version: version,
+            product_url: quote.productUrl || "",
+            shipping_cost: numberOrZero_(quote.shippingCost),
+            lead_time: quote.leadTime || "",
+            stock_available: quote.available === null || quote.available === undefined ? "" : numberOrZero_(quote.available),
+            notes: quote.notes || "",
           });
         });
     });
@@ -1771,6 +1778,9 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         created_at: order.date,
         semester_ids_json: jsonCell_(arrayOrEmpty_(order.terms)),
         notes: order.notes || "",
+        carrier: order.carrier || "",
+        tracking_number: order.trackingNumber || "",
+        tracking_url: order.trackingUrl || "",
         updated_at: now,
         version: version,
       };
@@ -1785,6 +1795,7 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         component_id: line[0],
         quantity: line[1],
         unit_price: line[2],
+        vendor: line[3] || order.vendor || "",
         semester_ids_json: jsonCell_(arrayOrEmpty_(order.terms)),
         updated_at: now,
         version: version,

@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-<meta name="labkit-build" content="2026.10.05.11">
+<meta name="labkit-build" content="2026.10.06.12">
 <title>LabKit · Component Procurement</title>
 <style id="labkit-bundled-styles">
 /* Modernist — design-system tokens and component classes. This file is the source of truth for the system's look; retune it here and see readme.md. */
@@ -604,13 +604,47 @@ button {
   background: var(--color-accent);
 }
 
-.app-tabs {
-  overflow-x: auto;
-  scrollbar-width: thin;
+.segmented-control > :last-child {
+  border-right-width: 1px !important;
 }
 
-.app-tabs > button {
-  white-space: nowrap;
+button[style*="border-right-width:0"]:last-child {
+  border-right-width: 1px !important;
+}
+
+.summary-strip > :last-child {
+  border-right: 0 !important;
+}
+
+button,
+.btn,
+input,
+select,
+textarea {
+  box-sizing: border-box;
+}
+
+button:focus-visible,
+.btn:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.btn:not(:disabled),
+button:not(:disabled) {
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.app-content .table tbody tr {
+  transition: background-color 100ms ease;
+}
+
+.app-content .table tbody tr:hover {
+  background: var(--color-neutral-100);
 }
 
 .app-content {
@@ -715,7 +749,7 @@ button {
   }
 
   .app-header {
-    padding: 12px 14px 0 !important;
+    padding: 12px 14px !important;
   }
 
   .app-header h2 {
@@ -4124,7 +4158,7 @@ setPersistence(auth, browserLocalPersistence)
 
 <aside id="labkit-auth-session" class="labkit-auth-session" aria-label="Signed-in account" hidden>
   <span id="labkit-session-user"></span>
-  <span class="labkit-build-id">v2026.10.05.11</span>
+  <span class="labkit-build-id">v2026.10.06.12</span>
   <button id="labkit-session-sign-out" type="button">Sign out</button>
 </aside>
 
@@ -4166,6 +4200,12 @@ setPersistence(auth, browserLocalPersistence)
           <span style="{{ g.metaStyle }}">{{ g.meta }}</span>
         </button>
       </template>
+      <div style="{{ workspaceNavStyle }}">
+        <div style="font-size:10px;letter-spacing:0.11em;text-transform:uppercase;color:var(--color-neutral-600);padding:18px 6px 7px">{{ workspaceNavTitle }}</div>
+        <template data-dc-control="for" list="{{ workspaceNav }}" as="w" hint-placeholder-count="4">
+          <button onClick="{{ w.go }}" style="{{ w.style }}">{{ w.label }}</button>
+        </template>
+      </div>
       <div style="font-size:10px;letter-spacing:0.11em;text-transform:uppercase;color:var(--color-neutral-600);padding:20px 6px 8px;display:flex;justify-content:space-between;align-items:center">
         <span>Semesters</span>
         <button class="btn btn-ghost" style="font-size:11px;padding:2px 5px" onClick="{{ newSemester }}">+ New</button>
@@ -4208,7 +4248,7 @@ setPersistence(auth, browserLocalPersistence)
   </aside>
 
   <main class="app-main" style="display:flex;flex-direction:column;overflow:hidden;min-width:0">
-    <header class="app-header" style="padding:16px 24px 0;border-bottom:2px solid var(--color-divider)">
+    <header class="app-header" style="padding:16px 24px;border-bottom:2px solid var(--color-divider)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
         <div style="display:flex;align-items:flex-start;gap:10px">
           <button class="btn btn-secondary btn-icon mobile-nav-toggle" aria-label="Toggle navigation" aria-expanded="{{ sidebarExpanded }}" onClick="{{ toggleSidebar }}">☰</button>
@@ -4232,11 +4272,6 @@ setPersistence(auth, browserLocalPersistence)
           </template>
         </div>
       </div>
-      <nav class="app-tabs" aria-label="Workspace tabs" style="display:flex;gap:0;margin-top:14px">
-        <template data-dc-control="for" list="{{ tabs }}" as="t" hint-placeholder-count="6">
-          <button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button>
-        </template>
-      </nav>
     </header>
 
     <div class="app-content" style="flex:1;overflow:auto;padding:24px">
@@ -4312,7 +4347,7 @@ setPersistence(auth, browserLocalPersistence)
             <button class="btn btn-primary" onClick="{{ kit.kitToList }}">Add to shopping list</button>
           </div>
         </div>
-        <div style="display:flex;border:1px solid var(--color-divider);margin-bottom:20px">
+        <div class="summary-strip" style="display:flex;border:1px solid var(--color-divider);margin-bottom:20px">
           <template data-dc-control="for" list="{{ kit.stats }}" as="st" hint-placeholder-count="5">
             <div style="flex:1;padding:12px 16px;border-right:1px solid var(--color-divider)">
               <div style="font-family:var(--font-heading);font-weight:800;font-size:21px;color:{{ st.color }}">{{ st.val }}</div>
@@ -4360,7 +4395,6 @@ setPersistence(auth, browserLocalPersistence)
             <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
               <div class="field" style="flex:2;min-width:220px"><label>Kit name</label><input class="input" value="{{ builder.name }}" onInput="{{ builder.onName }}"></div>
               <div class="field" style="flex:1;min-width:120px"><label>Class / owner</label><input class="input" value="{{ builder.code }}" onInput="{{ builder.onCode }}"></div>
-              <div class="field" style="width:120px"><label>To purchase</label><input class="input" type="number" value="{{ builder.purchase }}" onInput="{{ builder.onPurchase }}"></div>
               <div class="field" style="width:130px"><label>Sale price / kit</label><input class="input" type="number" min="0" step="0.01" placeholder="—" value="{{ builder.salePrice }}" onInput="{{ builder.onSalePrice }}"></div>
               <div class="field" style="min-width:210px"><label>Packaging bag</label><select class="input" value="{{ builder.bagTypeId }}" onChange="{{ builder.onBagType }}"><template data-dc-control="for" list="{{ builder.bagTypes }}" as="b" hint-placeholder-count="5"><option value="{{ b.id }}">{{ b.label }}</option></template></select></div>
               <button class="btn btn-secondary" onClick="{{ builder.applyForecast }}" style="{{ builder.forecastStyle }};align-self:flex-end;margin-bottom:1px">{{ builder.forecastLabel }}</button>
@@ -4416,7 +4450,7 @@ setPersistence(auth, browserLocalPersistence)
 
       <sc-if value="{{ vList }}" hint-placeholder-val="{{ false }}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-          <div style="display:flex;border:1px solid var(--color-divider);flex:1;min-width:520px">
+          <div class="summary-strip" style="display:flex;border:1px solid var(--color-divider);flex:1;min-width:520px">
             <template data-dc-control="for" list="{{ list.summary }}" as="c" hint-placeholder-count="4">
               <div style="flex:1;padding:13px 16px;border-right:1px solid var(--color-divider)">
                 <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;color:{{ c.color }}">{{ c.val }}</div>
@@ -4429,7 +4463,7 @@ setPersistence(auth, browserLocalPersistence)
         <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:14px">
           <div>
             <div style="font-size:11px;color:var(--color-neutral-700);margin-bottom:5px">{{ list.policyLabel }}</div>
-            <div style="display:flex;flex-wrap:wrap">
+            <div class="segmented-control" style="display:flex;flex-wrap:wrap">
               <template data-dc-control="for" list="{{ list.policies }}" as="p" hint-placeholder-count="6"><button onClick="{{ p.go }}" style="{{ p.style }}">{{ p.label }}</button></template>
             </div>
           </div>
@@ -4441,7 +4475,7 @@ setPersistence(auth, browserLocalPersistence)
         <table class="table">
           <thead><tr>
             <th>Component</th><th>Category</th><th style="text-align:right">Needed</th><th style="text-align:right">On hand</th>
-            <th style="text-align:right">To order</th><th>Cheapest vendor</th><th>Evidence</th><th style="text-align:right">Unit</th><th style="text-align:right">Extended</th><th style="text-align:right">Lead</th>
+            <th style="text-align:right">To order</th><th>Needed for</th><th>Selected vendor</th><th>Source status</th><th style="text-align:right">Unit</th><th style="text-align:right">Landed total</th><th style="text-align:right">Lead</th>
           </tr></thead>
           <tbody>
             <template data-dc-control="for" list="{{ list.rows }}" as="r" hint-placeholder-count="12">
@@ -4451,14 +4485,16 @@ setPersistence(auth, browserLocalPersistence)
                 <td style="text-align:right">{{ r.needed }}</td>
                 <td style="text-align:right;color:var(--color-neutral-600)">{{ r.onhand }}</td>
                 <td style="text-align:right;font-weight:600">{{ r.order }}</td>
+                <td style="font-size:11px;color:var(--color-neutral-700)">{{ r.usedBy }}</td>
                 <td onClick="{{ r.stop }}">
                   <select value="{{ r.vendorSel }}" onChange="{{ r.onVendor }}" style="{{ r.vendorStyle }}">
                     <template data-dc-control="for" list="{{ r.vendorOpts }}" as="v" hint-placeholder-count="7"><option value="{{ v.id }}">{{ v.label }}</option></template>
                   </select>
+                  <div style="font-size:10px;color:var(--color-neutral-600);margin-top:4px;max-width:240px">{{ r.decision }}</div>
                 </td>
                 <td><span class="tag {{ r.evidenceClass }}">{{ r.evidence }}</span><a href="{{ r.url }}" target="_blank" rel="noopener noreferrer" style="{{ r.linkStyle }}">Check ↗</a></td>
                 <td style="text-align:right">{{ r.unit }}</td>
-                <td style="text-align:right;font-weight:600">{{ r.ext }}</td>
+                <td style="text-align:right;font-weight:600">{{ r.landed }}</td>
                 <td style="text-align:right;color:var(--color-neutral-600)">{{ r.lead }}</td>
               </tr>
             </template>
@@ -4511,8 +4547,7 @@ setPersistence(auth, browserLocalPersistence)
               </div>
               <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
                 <div class="field" style="width:150px"><label>Quantity</label><input class="input" type="number" value="{{ pricing.qty }}" onInput="{{ pricing.onQty }}"></div>
-                <button class="btn btn-secondary" onClick="{{ pricing.addManual }}">+ Manual supplier</button>
-                <button class="btn btn-primary" onClick="{{ pricing.refresh }}">{{ pricing.refreshLabel }}</button>
+                <button class="btn btn-primary" onClick="{{ pricing.addManual }}">+ Add vendor listing</button>
               </div>
             </div>
             <div style="border-left:3px solid var(--color-accent);background:var(--color-accent-100);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--color-accent-900)">{{ pricing.quoteStatus }}</div>
@@ -4531,11 +4566,11 @@ setPersistence(auth, browserLocalPersistence)
               <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:12px"><label><input type="checkbox" checked="{{ pricing.form.domestic }}" onChange="{{ pricing.form.onDomestic }}"> US/domestic source</label><label><input type="checkbox" checked="{{ pricing.form.compatible }}" onChange="{{ pricing.form.onCompatible }}"> Officer confirmed this exact listing is compatible</label><button class="btn btn-primary" onClick="{{ pricing.form.save }}">Save supplier table</button></div>
             </div>
             <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:14px">
-              <span style="font-size:11.5px;color:var(--color-neutral-600);margin-right:2px">Check non-API sources:</span>
+              <span style="font-size:11.5px;color:var(--color-neutral-600);margin-right:2px">Find and save a product link:</span>
               <template data-dc-control="for" list="{{ pricing.manualSources }}" as="s" hint-placeholder-count="5">
                 <a href="{{ s.url }}" target="_blank" rel="noopener noreferrer" style="border:1px solid var(--color-divider);background:var(--color-surface);color:var(--color-text);font-size:11.5px;font-weight:600;padding:6px 9px;text-decoration:none">{{ s.label }} ↗</a>
               </template>
-              <span style="font-size:10.5px;color:var(--color-neutral-600)">Manual marketplace results are not treated as verified quotes.</span>
+              <span style="font-size:10.5px;color:var(--color-neutral-600)">Search links are only starting points. Save the exact listing after an officer verifies it.</span>
             </div>
             <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
               <template data-dc-control="for" list="{{ pricing.presets }}" as="p" hint-placeholder-count="4"><button onClick="{{ p.go }}" style="{{ p.style }}">{{ p.label }}</button></template>
@@ -4793,12 +4828,12 @@ setPersistence(auth, browserLocalPersistence)
             </select>
           </div>
           <div><div style="font-size:11px;color:var(--color-neutral-700);margin-bottom:5px">Transform</div>
-            <div style="display:flex">
+            <div class="segmented-control" style="display:flex">
               <template data-dc-control="for" list="{{ trends.transforms }}" as="t" hint-placeholder-count="4"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button></template>
             </div>
           </div>
           <div><div style="font-size:11px;color:var(--color-neutral-700);margin-bottom:5px">Season</div>
-            <div style="display:flex">
+            <div class="segmented-control" style="display:flex">
               <template data-dc-control="for" list="{{ trends.seasons }}" as="t" hint-placeholder-count="4"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button></template>
             </div>
           </div>
@@ -4841,7 +4876,7 @@ setPersistence(auth, browserLocalPersistence)
 
       <sc-if value="{{ vAccuracy }}" hint-placeholder-val="{{ false }}">
         <div style="border:1px solid var(--color-divider);background:var(--color-surface);padding:12px 14px;margin-bottom:18px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-end">
-          <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--color-neutral-600);margin-bottom:7px">Forecast &amp; trends workspace</div><div style="display:flex;gap:0"><template data-dc-control="for" list="{{ acc.modes }}" as="m" hint-placeholder-count="3"><button onClick="{{ m.go }}" style="{{ m.style }}">{{ m.label }}</button></template></div></div>
+          <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--color-neutral-600);margin-bottom:7px">Forecast &amp; trends workspace</div><div class="segmented-control" style="display:flex;gap:0"><template data-dc-control="for" list="{{ acc.modes }}" as="m" hint-placeholder-count="3"><button onClick="{{ m.go }}" style="{{ m.style }}">{{ m.label }}</button></template></div></div>
           <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
             <div class="field" style="width:180px"><label>Semester</label><select class="input" value="{{ acc.termId }}" onChange="{{ acc.onTerm }}"><template data-dc-control="for" list="{{ acc.termOptions }}" as="t" hint-placeholder-count="8"><option value="{{ t.id }}">{{ t.label }}</option></template></select></div>
             <div class="field" style="width:230px"><label>Jump to individual kit trend</label><select class="input" value="{{ acc.kitId }}" onChange="{{ acc.onKit }}"><template data-dc-control="for" list="{{ acc.kitOptions }}" as="k" hint-placeholder-count="7"><option value="{{ k.id }}">{{ k.label }}</option></template></select></div>
@@ -4867,7 +4902,7 @@ setPersistence(auth, browserLocalPersistence)
         </div>
 
         <sc-if value="{{ acc.isOverview }}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;border:1px solid var(--color-divider);background:var(--color-surface);margin-bottom:22px;flex-wrap:wrap">
+          <div class="summary-strip" style="display:flex;border:1px solid var(--color-divider);background:var(--color-surface);margin-bottom:22px;flex-wrap:wrap">
             <template data-dc-control="for" list="{{ acc.kpis }}" as="k" hint-placeholder-count="4"><div style="flex:1;min-width:150px;padding:14px 16px;border-right:1px solid var(--color-divider)"><div style="font-family:var(--font-heading);font-weight:800;font-size:23px;color:{{ k.color }}">{{ k.val }}</div><div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-600);margin-top:3px">{{ k.label }}</div><div style="font-size:11px;color:var(--color-neutral-600);margin-top:5px">{{ k.note }}</div></div></template>
           </div>
           <h4 style="margin:0 0 8px">Upcoming semesters</h4>
@@ -4883,7 +4918,7 @@ setPersistence(auth, browserLocalPersistence)
         <sc-if value="{{ acc.isSemester }}" hint-placeholder-val="{{ false }}">
           <button class="btn btn-ghost" onClick="{{ acc.back }}" style="margin-bottom:8px">← Forecast overview</button>
           <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px"><div><span class="tag tag-accent">{{ acc.semester.status }}</span><h3 style="font-size:25px;margin:7px 0 2px">{{ acc.semester.label }}</h3><div style="font-size:12px;color:var(--color-neutral-600)">{{ acc.semester.note }}</div></div><div style="display:flex;gap:8px"><button onClick="{{ acc.semester.applyAll }}" style="{{ acc.semester.applyAllStyle }}">Use all forecasts in plan</button><button class="btn btn-primary" onClick="{{ acc.semester.order }}">Order for planning semesters</button></div></div>
-          <div style="display:flex;border:1px solid var(--color-divider);background:var(--color-surface);margin-bottom:18px;flex-wrap:wrap"><template data-dc-control="for" list="{{ acc.semester.kpis }}" as="k" hint-placeholder-count="4"><div style="flex:1;min-width:145px;padding:13px 15px;border-right:1px solid var(--color-divider)"><div style="font-family:var(--font-heading);font-size:21px;font-weight:800;color:{{ k.color }}">{{ k.val }}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--color-neutral-600)">{{ k.label }}</div></div></template></div>
+          <div class="summary-strip" style="display:flex;border:1px solid var(--color-divider);background:var(--color-surface);margin-bottom:18px;flex-wrap:wrap"><template data-dc-control="for" list="{{ acc.semester.kpis }}" as="k" hint-placeholder-count="4"><div style="flex:1;min-width:145px;padding:13px 15px;border-right:1px solid var(--color-divider)"><div style="font-family:var(--font-heading);font-size:21px;font-weight:800;color:{{ k.color }}">{{ k.val }}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--color-neutral-600)">{{ k.label }}</div></div></template></div>
           <div style="font-size:11.5px;color:var(--color-neutral-600);margin-bottom:8px">Use <b>Fill data</b> on any row to enter class size, forecast, and actual or planned units. Changes save automatically.</div>
           <table class="table"><thead><tr><th>Kit / item</th><th style="text-align:right">Enrolled students</th><th style="text-align:right">Forecast</th><th style="text-align:right">{{ acc.actualLabel }}</th><th>Evidence</th><th style="text-align:right">Available</th><th style="text-align:right">Prepare / order</th><th>Confidence</th><th></th></tr></thead><tbody><template data-dc-control="for" list="{{ acc.semester.rows }}" as="r" hint-placeholder-count="7"><tr onClick="{{ r.open }}" style="cursor:pointer"><td><b>{{ r.code }}</b><div style="font-size:10.5px;color:var(--color-neutral-600)">{{ r.name }}</div></td><td style="text-align:right"><b>{{ r.enrollment }}</b><div title="{{ r.enrollmentNote }}" style="font-size:9.5px;color:var(--color-neutral-600);max-width:145px;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.enrollmentNote }}</div></td><td style="text-align:right;font-weight:700">{{ r.forecast }}</td><td style="text-align:right">{{ r.actual }}</td><td style="max-width:330px;font-size:11px;color:var(--color-neutral-600)"><b>{{ r.source }}</b> · {{ r.reason }}</td><td style="text-align:right">{{ r.available }}</td><td style="text-align:right;font-weight:800;color:var(--color-accent-700)">{{ r.prepare }}</td><td><span class="tag tag-outline">{{ r.confidence }}</span></td><td style="text-align:right"><button onClick="{{ r.use }}" style="{{ r.useStyle }}">Use forecast</button><button class="btn btn-ghost" onClick="{{ r.edit }}">{{ r.editLabel }}</button></td></tr><tr style="{{ r.editStyle }}"><td colspan="9" style="background:var(--color-accent-100);padding:12px 14px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;align-items:end"><div class="field"><label>Class size</label><input class="input" type="number" min="0" value="{{ r.classSize }}" onChange="{{ r.onClassSize }}" style="{{ r.classStyle }}"></div><div class="field"><label>Forecast</label><input class="input" type="number" min="0" value="{{ r.forecastRaw }}" onChange="{{ r.onForecast }}"></div><div class="field"><label>{{ acc.actualLabel }}</label><input class="input" type="number" min="0" value="{{ r.actualRaw }}" onChange="{{ r.onActual }}"></div><div style="font-size:11.5px;color:var(--color-neutral-700);padding-bottom:8px">{{ r.reason }}</div><button class="btn btn-secondary" onClick="{{ r.edit }}">Done</button></div></td></tr></template></tbody></table>
         </sc-if>
@@ -4891,7 +4926,7 @@ setPersistence(auth, browserLocalPersistence)
         <sc-if value="{{ acc.isKit }}" hint-placeholder-val="{{ false }}">
           <button class="btn btn-ghost" onClick="{{ acc.back }}" style="margin-bottom:8px">← Forecast overview</button>
           <div style="margin-bottom:14px"><span class="tag tag-outline">{{ acc.kit.code }}</span><h3 style="font-size:25px;margin:7px 0 2px">{{ acc.kit.name }}</h3><div style="font-size:12px;color:var(--color-neutral-600)">Forecast and actual demand for this kit across every semester.</div></div>
-          <div style="display:flex;border:1px solid var(--color-divider);background:var(--color-surface);margin-bottom:18px;flex-wrap:wrap"><template data-dc-control="for" list="{{ acc.kit.kpis }}" as="k" hint-placeholder-count="4"><div style="flex:1;min-width:145px;padding:13px 15px;border-right:1px solid var(--color-divider)"><div style="font-family:var(--font-heading);font-size:21px;font-weight:800;color:{{ k.color }}">{{ k.val }}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--color-neutral-600)">{{ k.label }}</div></div></template></div>
+          <div class="summary-strip" style="display:flex;border:1px solid var(--color-divider);background:var(--color-surface);margin-bottom:18px;flex-wrap:wrap"><template data-dc-control="for" list="{{ acc.kit.kpis }}" as="k" hint-placeholder-count="4"><div style="flex:1;min-width:145px;padding:13px 15px;border-right:1px solid var(--color-divider)"><div style="font-family:var(--font-heading);font-size:21px;font-weight:800;color:{{ k.color }}">{{ k.val }}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--color-neutral-600)">{{ k.label }}</div></div></template></div>
           <div style="{{ acc.kit.driverStyle }}">
             <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px"><div><h4 style="margin:0 0 3px">General-item demand drivers · {{ acc.kit.driverTerm }}</h4><div style="font-size:11px;color:var(--color-neutral-600);max-width:780px">Breadboard and wire-kit forecasts scale their historical sales baseline using these course enrollments. A course contributes only on or after its stated start semester.</div></div><span class="tag tag-accent">Enrollment-adjusted</span></div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:8px"><template data-dc-control="for" list="{{ acc.kit.drivers }}" as="d" hint-placeholder-count="6"><div style="border:1px solid var(--color-divider);background:var(--color-bg);padding:9px 10px;{{ d.opacity }}"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:12px">{{ d.course }}</b><span style="font-size:9.5px;color:{{ d.color }}">{{ d.status }}</span></div><div style="font-size:9.5px;color:var(--color-neutral-600);margin:2px 0 6px">Counts from {{ d.since }}</div><sc-if value="{{ d.active }}" hint-placeholder-val="{{ true }}"><input class="input" type="number" min="0" value="{{ d.value }}" onFocus="{{ d.onFocus }}" onClick="{{ d.onFocus }}" onChange="{{ d.onChange }}" style="min-height:31px;text-align:right"></sc-if><sc-if value="{{ d.inactive }}" hint-placeholder-val="{{ false }}"><div style="min-height:31px;display:flex;align-items:center;justify-content:flex-end;padding:0 10px;border:1px solid var(--color-divider);background:var(--color-neutral-100);color:var(--color-neutral-500)">—</div></sc-if></div></template></div>
@@ -4926,7 +4961,7 @@ setPersistence(auth, browserLocalPersistence)
             <template data-dc-control="for" list="{{ comb.terms }}" as="t" hint-placeholder-count="8"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button></template>
           </div>
         </div>
-        <div style="display:flex;border:1px solid var(--color-divider);margin-bottom:20px">
+        <div class="summary-strip" style="display:flex;border:1px solid var(--color-divider);margin-bottom:20px">
           <template data-dc-control="for" list="{{ comb.summary }}" as="c" hint-placeholder-count="5">
             <div style="flex:1;padding:13px 16px;border-right:1px solid var(--color-divider)">
               <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;color:{{ c.color }}">{{ c.val }}</div>
@@ -4935,14 +4970,14 @@ setPersistence(auth, browserLocalPersistence)
           </template>
         </div>
         <table class="table">
-          <thead><tr><th>Component / calculation</th><template data-dc-control="for" list="{{ comb.cols }}" as="c" hint-placeholder-count="3"><th style="text-align:right">{{ c }}</th></template><th style="text-align:right">Combined</th><th>Cheapest source</th><th style="text-align:right">Unit alone</th><th style="text-align:right">Unit combined</th><th style="text-align:right">Saved</th></tr></thead>
+          <thead><tr><th>Component / calculation</th><template data-dc-control="for" list="{{ comb.cols }}" as="c" hint-placeholder-count="3"><th style="text-align:right">{{ c }}</th></template><th style="text-align:right">Combined</th><th>Vendor decision</th><th style="text-align:right">Unit alone</th><th style="text-align:right">Unit combined</th><th style="text-align:right">Saved</th></tr></thead>
           <tbody>
             <template data-dc-control="for" list="{{ comb.rows }}" as="r" hint-placeholder-count="12">
               <tr onClick="{{ r.open }}" style="cursor:pointer">
                 <td style="font-weight:600">{{ r.name }}<div style="font-size:10.5px;color:var(--color-neutral-600);font-weight:400;max-width:360px">{{ r.basis }}</div></td>
                 <template data-dc-control="for" list="{{ r.cells }}" as="c" hint-placeholder-count="3"><td style="text-align:right;color:var(--color-neutral-600)">{{ c }}</td></template>
                 <td style="text-align:right;font-weight:600">{{ r.total }}</td>
-                <td><b style="font-size:11.5px">{{ r.vendor }}</b><div style="font-size:10px;color:var(--color-neutral-600)">{{ r.evidence }}</div><a href="{{ r.url }}" target="_blank" rel="noopener noreferrer" style="{{ r.linkStyle }}">Open listing ↗</a></td>
+                <td onClick="{{ r.stop }}"><select value="{{ r.vendorSel }}" onChange="{{ r.onVendor }}" style="{{ r.vendorStyle }}"><template data-dc-control="for" list="{{ r.vendorOpts }}" as="v" hint-placeholder-count="5"><option value="{{ v.id }}">{{ v.label }}</option></template></select><div style="font-size:10px;color:var(--color-neutral-700);margin-top:4px;max-width:270px">{{ r.decision }}</div><a href="{{ r.url }}" target="_blank" rel="noopener noreferrer" style="{{ r.linkStyle }}">Open listing ↗</a></td>
                 <td style="text-align:right;color:var(--color-neutral-600)">{{ r.unitAlone }}</td>
                 <td style="text-align:right;font-weight:600">{{ r.unitComb }}</td>
                 <td style="text-align:right;font-weight:700;color:var(--color-accent-700)">{{ r.saved }}</td>
@@ -5078,11 +5113,14 @@ setPersistence(auth, browserLocalPersistence)
             <div class="field"><label>Date</label><input class="input" type="date" value="{{ ord.form.date }}" onInput="{{ ord.form.onDate }}"></div>
             <div class="field"><label>Vendor</label><input class="input" placeholder="Jameco, DigiKey, mixed…" value="{{ ord.form.vendor }}" onInput="{{ ord.form.onVendor }}"></div>
             <div class="field"><label>Status</label><select class="input" value="{{ ord.form.status }}" onChange="{{ ord.form.onStatus }}"><option value="draft">Draft</option><option value="ordered">Ordered</option><option value="received">Received</option><option value="cancelled">Cancelled</option></select></div>
+            <div class="field"><label>Carrier</label><input class="input" placeholder="UPS, FedEx, USPS…" value="{{ ord.form.carrier }}" onInput="{{ ord.form.onCarrier }}"></div>
+            <div class="field"><label>Tracking number</label><input class="input" placeholder="Optional" value="{{ ord.form.trackingNumber }}" onInput="{{ ord.form.onTrackingNumber }}"></div>
           </div>
+          <div class="field" style="margin-top:12px"><label>Tracking link</label><input class="input" type="url" placeholder="https://…" value="{{ ord.form.trackingUrl }}" onInput="{{ ord.form.onTrackingUrl }}"></div>
           <div style="margin-top:12px"><div style="font-size:11px;color:var(--color-neutral-700);margin-bottom:5px">Planning semesters covered</div><div style="display:flex;gap:6px;flex-wrap:wrap"><template data-dc-control="for" list="{{ ord.form.terms }}" as="t" hint-placeholder-count="4"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button></template></div></div>
           <div class="field" style="margin-top:12px"><label>Receipt URL (Google Drive, Dropbox, or other stored file)</label><input class="input" type="url" placeholder="https://drive.google.com/…" value="{{ ord.form.receiptUrl }}" onInput="{{ ord.form.onReceipt }}"></div>
           <div class="field" style="margin-top:10px"><label>Order notes / confirmation details</label><textarea class="input" rows="2" value="{{ ord.form.notes }}" onInput="{{ ord.form.onNotes }}"></textarea></div>
-          <table class="table" style="margin-top:12px"><thead><tr><th>Component</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit paid</th><th></th></tr></thead><tbody><template data-dc-control="for" list="{{ ord.form.lines }}" as="l" hint-placeholder-count="5"><tr><td>{{ l.name }}</td><td style="text-align:right">{{ l.qty }}</td><td style="text-align:right">{{ l.unit }}</td><td style="text-align:right"><button class="btn btn-ghost" onClick="{{ l.remove }}">Remove</button></td></tr></template></tbody></table>
+          <table class="table" style="margin-top:12px"><thead><tr><th>Component</th><th>Vendor for this line</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit paid</th><th></th></tr></thead><tbody><template data-dc-control="for" list="{{ ord.form.lines }}" as="l" hint-placeholder-count="5"><tr><td>{{ l.name }}</td><td style="min-width:170px"><input class="input" placeholder="Vendor" value="{{ l.vendor }}" onInput="{{ l.onVendor }}"></td><td style="text-align:right">{{ l.qty }}</td><td style="text-align:right">{{ l.unit }}</td><td style="text-align:right"><button class="btn btn-ghost" onClick="{{ l.remove }}">Remove</button></td></tr></template></tbody></table>
           <div style="display:grid;grid-template-columns:1fr 110px 120px auto;gap:8px;align-items:end;margin-top:10px"><div class="field"><label>Add component</label><select class="input" value="{{ ord.form.linePart }}" onChange="{{ ord.form.onLinePart }}"><template data-dc-control="for" list="{{ ord.form.parts }}" as="p" hint-placeholder-count="10"><option value="{{ p.id }}">{{ p.name }}</option></template></select></div><div class="field"><label>Qty</label><input class="input" type="number" min="1" value="{{ ord.form.lineQty }}" onInput="{{ ord.form.onLineQty }}"></div><div class="field"><label>Unit price</label><input class="input" type="number" min="0" step="0.0001" value="{{ ord.form.lineUnit }}" onInput="{{ ord.form.onLineUnit }}"></div><button class="btn btn-secondary" onClick="{{ ord.form.addLine }}">Add line</button></div>
           <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn btn-primary" onClick="{{ ord.form.save }}">Save order</button></div>
         </div>
@@ -5092,7 +5130,7 @@ setPersistence(auth, browserLocalPersistence)
         <table class="table" style="margin-bottom:26px"><thead><tr><th>Semester</th><th>Status</th><th style="text-align:right">Class size</th><th style="text-align:right">Units sold / planned</th><th style="text-align:right">Revenue</th><th style="text-align:right">Est. profit</th><th></th></tr></thead><tbody><template data-dc-control="for" list="{{ ord.semesters }}" as="r" hint-placeholder-count="12"><tr><td style="font-weight:600">{{ r.term }}</td><td><span class="tag tag-outline">{{ r.status }}</span></td><td style="text-align:right">{{ r.classSize }}</td><td style="text-align:right">{{ r.units }}</td><td style="text-align:right">{{ r.revenue }}</td><td style="text-align:right">{{ r.profit }}</td><td style="text-align:right"><button class="btn btn-ghost" onClick="{{ r.edit }}">Edit</button></td></tr></template></tbody></table>
         <h4 style="margin:0 0 9px">Purchase orders &amp; receipts</h4>
         <table class="table">
-          <thead><tr><th>Order</th><th>Date</th><th>Vendor</th><th>Status</th><th>Semesters covered</th><th style="text-align:right">Lines</th><th style="text-align:right">Total</th><th>Receipt</th></tr></thead>
+          <thead><tr><th>Order</th><th>Date</th><th>Vendor</th><th>Status</th><th>Semesters covered</th><th>Tracking</th><th style="text-align:right">Lines</th><th style="text-align:right">Total</th><th>Receipt</th></tr></thead>
           <tbody>
             <template data-dc-control="for" list="{{ ord.rows }}" as="o" hint-placeholder-count="6">
               <tr onClick="{{ o.toggle }}" style="cursor:pointer">
@@ -5101,6 +5139,7 @@ setPersistence(auth, browserLocalPersistence)
                 <td>{{ o.vendor }}</td>
                 <td><span class="tag tag-outline">{{ o.status }}</span></td>
                 <td><span style="display:inline-flex;gap:5px;flex-wrap:wrap"><template data-dc-control="for" list="{{ o.terms }}" as="t" hint-placeholder-count="2"><span class="tag tag-outline">{{ t }}</span></template></span></td>
+                <td><a href="{{ o.trackingUrl }}" target="_blank" rel="noopener noreferrer" style="{{ o.trackingStyle }}" onClick="{{ o.stopTracking }}">{{ o.trackingLabel }}</a></td>
                 <td style="text-align:right">{{ o.lines }}</td>
                 <td style="text-align:right;font-weight:600">{{ o.total }}</td>
                 <td><a href="{{ o.receiptUrl }}" target="_blank" rel="noopener noreferrer" class="tag {{ o.rcptClass }}" onClick="{{ o.stop }}">{{ o.rcpt }}</a></td>
@@ -5114,10 +5153,10 @@ setPersistence(auth, browserLocalPersistence)
             <span style="font-size:12px;color:var(--color-neutral-600)">{{ ord.detail.meta }}</span>
           </div>
           <table class="table">
-            <thead><tr><th>Component</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit paid</th><th style="text-align:right">Extended</th></tr></thead>
+            <thead><tr><th>Component</th><th>Vendor</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit paid</th><th style="text-align:right">Extended</th></tr></thead>
             <tbody>
               <template data-dc-control="for" list="{{ ord.detail.lines }}" as="l" hint-placeholder-count="4">
-                <tr onClick="{{ l.open }}" style="cursor:pointer"><td style="font-weight:600">{{ l.name }}</td><td style="text-align:right">{{ l.qty }}</td><td style="text-align:right">{{ l.unit }}</td><td style="text-align:right;font-weight:600">{{ l.ext }}</td></tr>
+                <tr onClick="{{ l.open }}" style="cursor:pointer"><td style="font-weight:600">{{ l.name }}</td><td>{{ l.vendor }}</td><td style="text-align:right">{{ l.qty }}</td><td style="text-align:right">{{ l.unit }}</td><td style="text-align:right;font-weight:600">{{ l.ext }}</td></tr>
               </template>
             </tbody>
           </table>
@@ -5224,12 +5263,28 @@ setPersistence(auth, browserLocalPersistence)
           </sc-if>
 
           <sc-if value="{{ modal.isVendors }}" hint-placeholder-val="{{ false }}">
-            <div style="font-size:11.5px;color:var(--color-neutral-600);margin-bottom:9px">API rows can refresh automatically. Manual rows keep your product link and bulk price table but must be checked before ordering. Estimate-only rows are placeholders, not supplier evidence.</div>
-            <table class="table"><thead><tr><th>Vendor</th><th>SKU</th><th style="text-align:right">Unit @ 100</th><th style="text-align:right">Lead</th><th style="text-align:right">Stock</th><th>Evidence</th><th></th></tr></thead>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px"><div><h4 style="margin:0 0 3px">Saved vendor listings</h4><div style="font-size:11.5px;color:var(--color-neutral-600)">These records are maintained by officers. Prices and stock never claim to update automatically; use the product link and checked date to verify them before ordering.</div></div><button class="btn btn-primary" onClick="{{ modal.addVendor }}">+ Add vendor listing</button></div>
+            <div style="{{ modal.supplierForm.style }}">
+              <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px"><div><b>{{ modal.supplierForm.title }}</b><div style="font-size:11px;color:var(--color-neutral-600);margin-top:2px">Saved only for {{ modal.name }}.</div></div><button class="btn btn-ghost" onClick="{{ modal.supplierForm.close }}">Close</button></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div class="field"><label>Vendor</label><input class="input" placeholder="Jameco, Amazon, LCSC…" value="{{ modal.supplierForm.vendor }}" onInput="{{ modal.supplierForm.onVendor }}"></div>
+                <div class="field"><label>Vendor SKU</label><input class="input" placeholder="Optional" value="{{ modal.supplierForm.sku }}" onInput="{{ modal.supplierForm.onSku }}"></div>
+                <div class="field" style="grid-column:1/-1"><label>Product link</label><input class="input" type="url" placeholder="https://…" value="{{ modal.supplierForm.url }}" onInput="{{ modal.supplierForm.onUrl }}"></div>
+                <div class="field" style="grid-column:1/-1"><label>Bulk pricing · one tier per line</label><textarea class="input" rows="4" placeholder="1 = 0.50&#10;100 = 0.31&#10;500 = 0.24" value="{{ modal.supplierForm.breaks }}" onInput="{{ modal.supplierForm.onBreaks }}"></textarea><div style="font-size:10.5px;color:var(--color-neutral-600);margin-top:3px">Format: quantity = unit price. A link without pricing is retained for reference but is not used for recommendations.</div></div>
+                <div class="field"><label>Shipping cost</label><input class="input" type="number" min="0" step="0.01" placeholder="0.00" value="{{ modal.supplierForm.shipping }}" onInput="{{ modal.supplierForm.onShipping }}"></div>
+                <div class="field"><label>Shipping / lead time</label><input class="input" placeholder="e.g. 5 days" value="{{ modal.supplierForm.lead }}" onInput="{{ modal.supplierForm.onLead }}"></div>
+                <div class="field"><label>Current stock shown</label><input class="input" type="number" min="0" placeholder="Unknown" value="{{ modal.supplierForm.stock }}" onInput="{{ modal.supplierForm.onStock }}"></div>
+                <div class="field"><label>Last checked</label><input class="input" type="date" value="{{ modal.supplierForm.checked }}" onInput="{{ modal.supplierForm.onChecked }}"></div>
+                <div class="field" style="grid-column:1/-1"><label>Notes</label><input class="input" placeholder="Seller, package, minimum order, reliability…" value="{{ modal.supplierForm.notes }}" onInput="{{ modal.supplierForm.onNotes }}"></div>
+              </div>
+              <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:12px"><label><input type="checkbox" checked="{{ modal.supplierForm.domestic }}" onChange="{{ modal.supplierForm.onDomestic }}"> US/domestic source</label><label><input type="checkbox" checked="{{ modal.supplierForm.compatible }}" onChange="{{ modal.supplierForm.onCompatible }}"> Exact listing confirmed compatible</label><button class="btn btn-primary" onClick="{{ modal.supplierForm.save }}">Save vendor listing</button></div>
+            </div>
+            <table class="table"><thead><tr><th>Vendor</th><th>Bulk prices</th><th style="text-align:right">Unit @ 100</th><th style="text-align:right">Shipping</th><th style="text-align:right">Landed @ 100</th><th style="text-align:right">Lead</th><th style="text-align:right">Stock</th><th>Checked</th><th></th></tr></thead>
               <tbody><template data-dc-control="for" list="{{ modal.vendors }}" as="v" hint-placeholder-count="6">
-                <tr style="{{ v.rowStyle }}"><td style="font-weight:600">{{ v.vendor }} <span style="{{ v.badgeStyle }}">{{ v.badge }}</span></td><td style="font-size:11px;color:var(--color-neutral-600)">{{ v.sku }}</td><td style="text-align:right;font-weight:600">{{ v.unit }}</td><td style="text-align:right;color:var(--color-neutral-600)">{{ v.lead }}</td><td style="text-align:right;color:var(--color-neutral-600)">{{ v.stock }}</td><td><span class="tag tag-outline">{{ v.source }}</span></td><td style="text-align:right"><a href="{{ v.url }}" target="_blank" rel="noopener noreferrer" style="{{ v.linkStyle }}">Open listing ↗</a></td></tr>
+                <tr style="{{ v.rowStyle }}"><td style="font-weight:600">{{ v.vendor }} <span style="{{ v.badgeStyle }}">{{ v.badge }}</span><div style="font-size:10px;color:var(--color-neutral-600);font-weight:400">{{ v.sku }}</div></td><td style="font-size:11px;color:var(--color-neutral-700)">{{ v.breaks }}</td><td style="text-align:right;font-weight:600">{{ v.unit }}</td><td style="text-align:right">{{ v.shipping }}</td><td style="text-align:right;font-weight:700">{{ v.landed }}</td><td style="text-align:right;color:var(--color-neutral-600)">{{ v.lead }}</td><td style="text-align:right;color:var(--color-neutral-600)">{{ v.stock }}</td><td style="font-size:11px;color:var(--color-neutral-600)">{{ v.checked }}</td><td style="text-align:right;white-space:nowrap"><a href="{{ v.url }}" target="_blank" rel="noopener noreferrer" style="{{ v.linkStyle }}">Open ↗</a><button class="btn btn-ghost" onClick="{{ v.edit }}" style="{{ v.editStyle }}">Edit</button><button class="btn btn-ghost" onClick="{{ v.remove }}" style="{{ v.editStyle }}">Remove</button></td></tr>
               </template></tbody>
             </table>
+            <div style="{{ modal.vendorsEmptyStyle }}">No vendor listing is saved yet. Add the product link and any known bulk tiers above.</div>
           </sc-if>
 
           <sc-if value="{{ modal.isHistory }}" hint-placeholder-val="{{ false }}">
@@ -5317,7 +5372,7 @@ class Component extends DCLogic {
       semesterForm:false, semesterDraft:{season:'Spring',year:2027},
       semesterNotes:'', semesterSuggestion:null, semesterSuggesting:false, semesterError:'',
       inventoryQuery:'', quoteLoading:false, quoteMessage:'',
-      supplierFormOpen:false, supplierEditingId:null, supplierDraft:{vendor:'',sku:'',productUrl:'',priceBreaks:'1 = ',stock:'',leadTime:'',checkedAt:'',notes:'',domestic:true,compatible:true},forecastAiBusy:false,forecastAiMessage:'',
+      supplierFormOpen:false, supplierEditingId:null, supplierDraft:{vendor:'',sku:'',productUrl:'',priceBreaks:'1 = ',shippingCost:'',stock:'',leadTime:'',checkedAt:'',notes:'',domestic:true,compatible:true},forecastAiBusy:false,forecastAiMessage:'',
       flagDraft:'', aiBusy:'', aiMessage:'', aiDescriptionDraft:'', aiReplacementResults:[],
       kitHistoryId:null, selectedVersionId:null, builderTargetTermId:'future', builderCategory:'All', builderComponent:'',
       forecastView:'overview', forecastTermId:null, forecastKitId:null, forecastEditKey:null,
@@ -5981,42 +6036,55 @@ class Component extends DCLogic {
       ticks:[0,0.5,1].map(t=>({y:(h-pb-t*(h-pt-pb)).toFixed(1),label:this.num(Math.round(mx*t))}))};
   }
   seasonColor(s){ return s==='Spring'?'var(--color-neutral-500)':s==='Summer'?'var(--color-neutral-700)':'var(--color-accent)'; }
-  partOrders(id){ if(!this._terms) this.buildHistory(); const out=[]; this.orders.forEach(o=>{ const ln=o.lines.find(l=>l[0]===id); if(ln) out.push({order:o,qty:ln[1],unit:ln[2]}); }); return out; }
+  partOrders(id){ if(!this._terms) this.buildHistory(); const out=[]; this.orders.forEach(o=>{ o.lines.filter(l=>l[0]===id).forEach(ln=>out.push({order:o,qty:ln[1],unit:ln[2],vendor:ln[3]||o.vendor})); }); return out; }
 
   unitAt(base,mult,qty){ const f=qty>=1000?0.55:qty>=500?0.63:qty>=100?0.72:qty>=10?0.85:1; return Math.max(0.008,base*mult*f); }
   vendors(id,qty){
-    const p=this.map[id]; const h=this.hash(id);
-    const estimates=this.VP.map((vp,i)=>{
-      const unit=this.unitAt(p.base,vp.mult,Math.max(1,qty));
-      const ship=vp.dom?(vp.v==='Amazon'?0:vp.v==='Jameco'?11.9:8.5):(vp.v==='AliExpress'?0:26);
-      return {vendor:vp.v,sku:'',unit,ext:unit*Math.max(1,qty),orderQty:Math.max(1,qty),lead:999,leadLabel:'not live',stock:null,dom:vp.dom,ship,breaks:[1,10,100,1000].map(q=>({q,u:this.unitAt(p.base,vp.mult,q)})),verified:false,manual:false,estimate:true,source:'Unverified model estimate',meetsRequirements:null,requirementReason:'No saved link or live API quote. Add a manual supplier table before ordering.'};
-    });
-    const verified=(this.supplierQuotes[id]||[]).filter(q=>q&&(q.verified||q.manual)).map(q=>{
+    const p=this.map[id]||{base:0};
+    const saved=(this.supplierQuotes[id]||[]).filter(q=>q&&q.manual===true).map(q=>{
       const min=Math.max(1,Number(q.minimumOrderQuantity)||1),mult=Math.max(1,Number(q.orderMultiple)||1),orderQty=Math.ceil(Math.max(qty,min)/mult)*mult;
       const breaks=(q.priceBreaks||[]).map(b=>({q:Number(b.quantity)||1,u:Number(b.unitPrice)})).filter(b=>Number.isFinite(b.u)).sort((a,b)=>a.q-b.q);
       let unit=q.unitPrice==null?null:Number(q.unitPrice);breaks.forEach(b=>{if(b.q<=orderQty)unit=b.u;});
       const leadMatch=String(q.leadTime||'').match(/\d+/),lead=leadMatch?Number(leadMatch[0]):999;
-      return{id:q.id,vendor:q.vendor,sku:q.vendorSku||'',unit,ext:unit==null?null:unit*orderQty,orderQty,lead,leadLabel:q.leadTime||'not stated',stock:q.available==null?null:Number(q.available)||0,dom:q.domestic!==false,ship:0,breaks,verified:q.verified===true,manual:q.manual===true,referenceOnly:q.referenceOnly===true||unit==null,seeded:q.seeded===true,estimate:false,source:q.source||(q.manual?'Manual supplier table':'Supplier API'),checkedAt:q.checkedAt,meetsRequirements:q.meetsRequirements,requirementsPending:q.requirementsPending===true,requirementReason:q.requirementReason||'',requirementScore:q.requirementScore,productUrl:q.productUrl||'',notes:q.notes||''};
+      const ext=unit==null?null:unit*orderQty,ship=Math.max(0,Number(q.shippingCost)||0);
+      return{id:q.id,vendor:q.vendor,sku:q.vendorSku||'',unit,ext,landed:ext==null?null:ext+ship,orderQty,lead,leadLabel:q.leadTime||'not stated',stock:q.available==null?null:Number(q.available)||0,dom:q.domestic!==false,ship,breaks,verified:false,manual:true,referenceOnly:q.referenceOnly===true||unit==null,seeded:q.seeded===true,estimate:false,source:'Officer-maintained listing',checkedAt:q.checkedAt,meetsRequirements:q.meetsRequirements,requirementsPending:false,requirementReason:q.requirementReason||'',requirementScore:null,productUrl:q.productUrl||'',notes:q.notes||''};
     });
-    const verifiedVendors=new Set(verified.filter(v=>!v.referenceOnly).map(v=>v.vendor));
-    return [...verified,...estimates.filter(v=>!verifiedVendors.has(v.vendor))];
+    if(saved.some(v=>!v.referenceOnly&&Number.isFinite(v.ext)&&v.meetsRequirements!==false))return saved;
+    const orderQty=Math.max(1,Number(qty)||1),unit=Math.max(0,Number(p.base)||0);
+    return [...saved,{id:'unsourced',vendor:'No supplier saved',sku:'',unit,ext:unit*orderQty,landed:unit*orderQty,orderQty,lead:999,leadLabel:'not sourced',stock:null,dom:true,ship:0,breaks:[],verified:false,manual:false,referenceOnly:false,estimate:true,source:'Planning placeholder only',checkedAt:null,meetsRequirements:null,requirementsPending:false,requirementReason:'Add an officer-maintained vendor listing before ordering.',productUrl:'',notes:''}];
   }
   quotePool(vs){ const saved=vs.filter(v=>(v.verified||v.manual)&&!v.referenceOnly&&Number.isFinite(v.ext)&&v.meetsRequirements!==false&&!v.requirementsPending); return saved.length?saved:vs.filter(v=>v.estimate); }
-  cheapest(id,qty){ const vs=this.quotePool(this.vendors(id,qty)); return vs.reduce((a,b)=>b.ext<a.ext?b:a); }
-  best(id,qty){
-    const vs=this.vendors(id,qty), P=this.state.vendorPolicy, ov=this.state.lineVendor[id];
+  cheapest(id,qty){ const vs=this.quotePool(this.vendors(id,qty)); return vs.reduce((a,b)=>(b.landed??b.ext)<(a.landed??a.ext)?b:a); }
+  best(id,qty,preferredVendor){
+    const vs=this.vendors(id,qty), P=this.state.vendorPolicy, ov=preferredVendor||this.state.lineVendor[id];
     if(ov){ const f=vs.find(v=>v.vendor===ov&&!v.referenceOnly&&Number.isFinite(v.ext)); if(f) return f; }
     if(P==='fastest') return this.fastest(this.quotePool(vs));
     let pool=this.quotePool(vs);
     if(P==='domestic') pool=pool.filter(v=>v.dom);
     else if(P!=='best'){ const f=vs.find(v=>v.vendor===P&&!v.referenceOnly&&Number.isFinite(v.ext)); if(f) return f; }
-    return pool.reduce((a,b)=>b.ext<a.ext?b:a);
+    if(!pool.length)pool=this.quotePool(vs);
+    return pool.reduce((a,b)=>(b.landed??b.ext)<(a.landed??a.ext)?b:a);
   }
-  bestDom(id,qty){ const vs=this.quotePool(this.vendors(id,qty)).filter(v=>v.dom); return vs.reduce((a,b)=>b.ext<a.ext?b:a); }
-  fastest(vs){ return vs.reduce((a,b)=>b.lead<a.lead?b:a); }
+  bestDom(id,qty){ const all=this.quotePool(this.vendors(id,qty)),vs=all.filter(v=>v.dom); return (vs.length?vs:all).reduce((a,b)=>(b.landed??b.ext)<(a.landed??a.ext)?b:a); }
+  fastest(vs){ return vs.length?vs.reduce((a,b)=>b.lead<a.lead?b:a):null; }
+  vendorPlan(id,qty,preferredVendor){
+    const needed=Math.max(0,Number(qty)||0),all=this.vendors(id,Math.max(1,needed)).filter(v=>v.manual&&!v.referenceOnly&&Number.isFinite(v.unit)&&v.meetsRequirements!==false);
+    if(!all.length)return{vendor:'No supplier saved',selected:null,allocations:[],total:null,decision:'Add and verify at least one vendor listing before ordering.'};
+    let candidates=all.slice();
+    if(this.state.vendorPolicy==='domestic'){
+      const domestic=candidates.filter(v=>v.dom);if(domestic.length)candidates=domestic;
+    }
+    const ranked=candidates.sort((a,b)=>this.state.vendorPolicy==='fastest'?((a.lead-b.lead)||((a.landed??a.ext)-(b.landed??b.ext))):(((a.landed??a.ext)-(b.landed??b.ext))||(a.lead-b.lead))),preferred=preferredVendor&&all.find(v=>v.vendor===preferredVendor),ordered=preferred?[preferred,...ranked.filter(v=>v.id!==preferred.id),...all.filter(v=>v.id!==preferred.id&&!ranked.some(r=>r.id===v.id))]:[...ranked,...all.filter(v=>!ranked.some(r=>r.id===v.id))];
+    let remaining=needed,total=0;const allocations=[];
+    ordered.forEach(v=>{if(remaining<=0)return;const cap=v.stock==null?remaining:Math.max(0,Math.floor(v.stock));const amount=Math.min(remaining,cap);if(!amount)return;const priced=this.vendors(id,amount).find(candidate=>candidate.id===v.id)||v,cost=amount*priced.unit+priced.ship;allocations.push({vendor:v.vendor,qty:amount,unit:priced.unit,shipping:priced.ship,cost,lead:v.leadLabel,url:v.productUrl});total+=cost;remaining-=amount;});
+    const first=ordered[0],fastest=this.fastest(all),allocationText=allocations.map(a=>this.num(a.qty)+' from '+a.vendor).join(', ');
+    let decision=remaining>0?'Saved stock covers only '+this.num(needed-remaining)+' of '+this.num(needed)+'; '+this.num(remaining)+' remain unsourced.':allocations.length>1?'Stock requires a split: '+allocationText+'.':(first.vendor+' covers the order at '+this.m(total)+' landed.');
+    if(!preferred&&fastest.vendor!==first.vendor&&fastest.lead<999)decision+=' '+fastest.vendor+' is faster ('+fastest.leadLabel+') if timing matters.';
+    return{vendor:first.vendor,selected:first,allocations,total,remaining,decision};
+  }
   paid(id,termId){
     const po=this.partOrders(id).find(x=>x.order.terms.includes(termId));
-    return po?{unit:po.unit,vendor:po.order.vendor,order:po.order.id,receipt:Boolean(po.order.receiptUrl||po.order.receipt)}:null;
+    return po?{unit:po.unit,vendor:po.vendor||po.order.vendor,order:po.order.id,receipt:Boolean(po.order.receiptUrl||po.order.receipt)}:null;
   }
 
   history(id){ const p=this.map[id],h=this.hash(id); const out=[]; for(let y=2016;y<=2026;y++){ const t=(y-2016)/10; const noise=((this.hash(id+y)%20)-10)/100; const price=this.unitAt(p.base,1.0,100)*(0.74+0.30*t)*(1+noise); out.push({year:y,price:Math.max(0.004,price)}); } return out; }
@@ -6031,7 +6099,7 @@ class Component extends DCLogic {
 
   tabDef(id,label){ const active=this.state.view===id||(id==='kits'&&this.state.view==='kit'); return {label,go:()=>{if(id==='build'){const term=this.sem(),kitId=this.state.builderKitId||this.kits[0].id;if(this.state.view==='build'&&this.state.builderTargetTermId===term.id)return;this.builderDraft=null;this.startKitEdit(kitId,term.id);return;}this.setState({view:id,kitId:id==='kits'?null:this.state.kitId});},style:`background:transparent;border:0;border-bottom:2px solid ${active?'var(--color-accent)':'transparent'};color:${active?'var(--color-accent)':'var(--color-neutral-700)'};font-family:var(--font-heading);font-weight:800;font-size:13.5px;padding:9px 15px;margin-bottom:-2px;cursor:pointer`}; }
 
-  openPart(id){ this.setState({partId:id,modalTab:'overview',flagDraft:'',aiMessage:'',aiDescriptionDraft:'',aiReplacementResults:[]}); }
+  openPart(id){ this.setState({partId:id,pricingPartId:id,modalTab:'overview',flagDraft:'',aiMessage:'',aiDescriptionDraft:'',aiReplacementResults:[],supplierFormOpen:false,supplierEditingId:null}); }
   addComponentFlag(id){const p=this.map[id],label=String(this.state.flagDraft||'').trim();if(!p||!label)return;const before=this.clone(this.catalog);p.flags=Array.isArray(p.flags)?p.flags:[];if(!p.flags.some(f=>String(f).toLowerCase()===label.toLowerCase()))p.flags.push(label.slice(0,40));this.recordChange('edit','catalog',id,before,this.catalog,'Added '+label+' flag to '+p.name);this.setState({flagDraft:''});}
   removeComponentFlag(id,label){const p=this.map[id];if(!p)return;const before=this.clone(this.catalog);p.flags=(p.flags||[]).filter(f=>f!==label);this.recordChange('edit','catalog',id,before,this.catalog,'Removed '+label+' flag from '+p.name);this.forceUpdate();}
   applyAiDescription(id){const p=this.map[id],draft=String(this.state.aiDescriptionDraft||'').trim();if(!p||!draft)return;const before=this.clone(this.catalog);p.role=draft.slice(0,1000);this.recordChange('edit','catalog',id,before,this.catalog,'Applied AI-drafted description to '+p.name);this.setState({aiDescriptionDraft:'',aiMessage:'Description saved after officer review.'});}
@@ -6045,12 +6113,12 @@ class Component extends DCLogic {
     this.forceUpdate(); this.flash('Receipt read and filed against '+(this.termMap[term]||{}).label);
   }
   openOrderForm(seed){
-    this.orderDraft=seed?this.clone(seed):{id:'PO-'+new Date().getFullYear()+'-'+String(this.orders.length+1).padStart(4,'0'),date:new Date().toISOString().slice(0,10),vendor:'',status:'ordered',terms:[],receiptUrl:'',notes:'',lines:[]};
+    this.orderDraft={trackingNumber:'',trackingUrl:'',carrier:'',...(seed?this.clone(seed):{id:'PO-'+new Date().getFullYear()+'-'+String(this.orders.length+1).padStart(4,'0'),date:new Date().toISOString().slice(0,10),vendor:'',status:'ordered',terms:[],receiptUrl:'',notes:'',lines:[]})};
     this.setState({scope:'global',gview:'orders',orderForm:true,orderLinePart:'hct00',orderLineQty:1,orderLineUnit:0});
   }
   addOrderDraftLine(){
     const id=this.state.orderLinePart,qty=Math.max(1,parseInt(this.state.orderLineQty)||1),unit=Math.max(0,Number(this.state.orderLineUnit)||0),valid=this.map[id]||(String(id).startsWith('bag:')&&this.bagMap[String(id).slice(4)]);if(!this.orderDraft||!valid)return;
-    const old=this.orderDraft.lines.find(l=>l[0]===id);if(old){old[1]+=qty;old[2]=unit;}else this.orderDraft.lines.push([id,qty,unit]);this.forceUpdate();
+    const old=this.orderDraft.lines.find(l=>l[0]===id&&l[3]===this.orderDraft.vendor);if(old){old[1]+=qty;old[2]=unit;}else this.orderDraft.lines.push([id,qty,unit,this.orderDraft.vendor]);this.forceUpdate();
   }
   saveOrder(){
     const d=this.orderDraft;if(!d||!String(d.id||'').trim()||!String(d.vendor||'').trim()){this.flash('Order number and vendor are required');return;}
@@ -6060,9 +6128,9 @@ class Component extends DCLogic {
   }
   createCombinedOrder(termIds){
     if(!termIds.length){this.flash('Select at least one Planning semester');return;}
-    const lines=[];this.catalog.forEach(p=>{const qty=this.termNeed(p.id,termIds);if(qty>0){const b=this.best(p.id,qty);lines.push([p.id,qty,b.unit]);}});
-    this.bagTypes.forEach(b=>{const need=this.bagNeed(b.id,termIds);if(need.packs>0)lines.push(['bag:'+b.id,need.packs,Math.max(0,Number(b.packPrice)||0)]);});
-    this.openOrderForm({id:'BULK-'+new Date().getFullYear()+'-'+String(this.orders.length+1).padStart(3,'0'),date:new Date().toISOString().slice(0,10),vendor:'Multiple / split cart',status:'draft',terms:termIds,receiptUrl:'',notes:'Created from Combine Orders. Split by supplier before placing the orders.',lines});
+    const lines=[],planNotes=[],combinedPrefix='combined:'+termIds.slice().sort().join('+')+':';this.catalog.forEach(p=>{const qty=this.termNeed(p.id,termIds);if(qty>0){const plan=this.vendorPlan(p.id,qty,this.state.lineVendor[combinedPrefix+p.id]);if(plan.allocations.length){plan.allocations.forEach(a=>lines.push([p.id,a.qty,a.unit,a.vendor]));planNotes.push(p.name+': '+plan.decision);}else lines.push([p.id,qty,0,'Vendor not selected']);}});
+    this.bagTypes.forEach(b=>{const need=this.bagNeed(b.id,termIds);if(need.packs>0)lines.push(['bag:'+b.id,need.packs,Math.max(0,Number(b.packPrice)||0),b.preferredVendor||'Vendor not selected']);});
+    this.openOrderForm({id:'BULK-'+new Date().getFullYear()+'-'+String(this.orders.length+1).padStart(3,'0'),date:new Date().toISOString().slice(0,10),vendor:'Multiple vendors',status:'draft',terms:termIds,receiptUrl:'',notes:'Created from Combined Purchasing. '+planNotes.join(' '),lines});
   }
   orderItemName(id){const key=String(id||'');if(key.startsWith('bag:'))return(this.bagMap[key.slice(4)]||{}).name||key;return(this.map[key]||{}).name||key;}
 
@@ -6153,7 +6221,7 @@ class Component extends DCLogic {
   openSupplierForm(componentId,quoteId){
     const quote=(this.supplierQuotes[componentId]||[]).find(q=>q.id===quoteId&&q.manual===true);
     const date=quote&&quote.checkedAt?String(quote.checkedAt).slice(0,10):new Date().toISOString().slice(0,10);
-    const draft=quote?{vendor:quote.vendor||'',sku:quote.vendorSku||'',productUrl:quote.productUrl||'',priceBreaks:(quote.priceBreaks||[]).map(b=>b.quantity+' = '+b.unitPrice).join('\n'),stock:quote.available==null?'':quote.available,leadTime:quote.leadTime||'',checkedAt:date,notes:quote.notes||'',domestic:quote.domestic!==false,compatible:quote.meetsRequirements!==false}:{vendor:'',sku:'',productUrl:'',priceBreaks:'1 = ',stock:'',leadTime:'',checkedAt:date,notes:'',domestic:true,compatible:true};
+    const draft=quote?{vendor:quote.vendor||'',sku:quote.vendorSku||'',productUrl:quote.productUrl||'',priceBreaks:(quote.priceBreaks||[]).map(b=>b.quantity+' = '+b.unitPrice).join('\n'),shippingCost:quote.shippingCost==null?'':quote.shippingCost,stock:quote.available==null?'':quote.available,leadTime:quote.leadTime||'',checkedAt:date,notes:quote.notes||'',domestic:quote.domestic!==false,compatible:quote.meetsRequirements!==false}:{vendor:'',sku:'',productUrl:'',priceBreaks:'1 = ',shippingCost:'',stock:'',leadTime:'',checkedAt:date,notes:'',domestic:true,compatible:true};
     this.setState({pricingPartId:componentId,supplierFormOpen:true,supplierEditingId:quote&&quote.id||null,supplierDraft:draft});
   }
 
@@ -6166,7 +6234,7 @@ class Component extends DCLogic {
     while((match=re.exec(raw)))breaks.push({quantity:Math.max(1,parseInt(match[1])||1),unitPrice:Math.max(0,Number(match[2])||0),currency:'USD'});
     breaks.sort((a,b)=>a.quantity-b.quantity);
     const before=this.clone(this.supplierQuotes),list=this.supplierQuotes[id]||[],existing=list.find(q=>q.id===this.state.supplierEditingId);
-    const quote={id:existing&&existing.id||('manual-'+Date.now().toString(36)),vendor,vendorSku:String(d.sku||'').trim(),productUrl:url,priceBreaks:breaks,unitPrice:breaks.length?breaks[0].unitPrice:null,minimumOrderQuantity:breaks.length?breaks[0].quantity:1,orderMultiple:1,available:String(d.stock||'').trim()===''?null:Math.max(0,Number(d.stock)||0),leadTime:String(d.leadTime||'').trim()||'check supplier',checkedAt:(d.checkedAt?new Date(d.checkedAt+'T12:00:00').toISOString():new Date().toISOString()),notes:String(d.notes||'').trim(),domestic:d.domestic!==false,meetsRequirements:d.compatible!==false,requirementsPending:false,requirementReason:d.compatible!==false?'Officer marked compatible.':'Not confirmed compatible.',manual:true,verified:false,autoRefresh:false,referenceOnly:breaks.length===0,source:breaks.length?'Manual supplier table':'Manual product link'};
+    const quote={id:existing&&existing.id||('manual-'+Date.now().toString(36)),vendor,vendorSku:String(d.sku||'').trim(),productUrl:url,priceBreaks:breaks,unitPrice:breaks.length?breaks[0].unitPrice:null,minimumOrderQuantity:breaks.length?breaks[0].quantity:1,orderMultiple:1,shippingCost:String(d.shippingCost||'').trim()===''?0:Math.max(0,Number(d.shippingCost)||0),available:String(d.stock||'').trim()===''?null:Math.max(0,Number(d.stock)||0),leadTime:String(d.leadTime||'').trim()||'check supplier',checkedAt:(d.checkedAt?new Date(d.checkedAt+'T12:00:00').toISOString():new Date().toISOString()),notes:String(d.notes||'').trim(),domestic:d.domestic!==false,meetsRequirements:d.compatible!==false,requirementsPending:false,requirementReason:d.compatible!==false?'Officer marked compatible.':'Not confirmed compatible.',manual:true,verified:false,autoRefresh:false,referenceOnly:breaks.length===0,source:breaks.length?'Officer-maintained price table':'Officer-maintained product link'};
     this.supplierQuotes[id]=existing?list.map(q=>q.id===existing.id?quote:q):[...list,quote];
     this.recordChange(existing?'edit':'create','supplier-quotes',id,before,this.supplierQuotes,(existing?'Updated ':'Added ')+vendor+' pricing for '+(this.map[id]||{}).name);
     this.setState({supplierFormOpen:false,supplierEditingId:null,quoteMessage:breaks.length?'Manual supplier pricing saved. It will be compared at the requested quantity and remains marked for manual checking.':'Supplier link saved without a price. It will not enter cheapest-source calculations until a price tier is added.'});
@@ -6210,7 +6278,7 @@ class Component extends DCLogic {
   }
 
   renderVals(){
-    const S=this.state, sem=this.sem();
+    const S=this.state, sem=this.sem(),effectiveView=S.view==='pricing'||S.view==='search'?'list':S.view;
     const flag=p=>p&&Array.isArray(p.flags)&&p.flags.length?{flag:p.flags[0],flagStyle:'font-size:9px;font-weight:700;letter-spacing:.05em;padding:2px 6px;background:var(--color-accent-200);color:var(--color-accent-800);vertical-align:middle'}:{flag:'',flagStyle:'display:none'};
 
     // sidebar
@@ -6224,8 +6292,9 @@ class Component extends DCLogic {
     const allocatedComponents=sem.inventoryApplied&&sem.inventoryAllocation&&sem.inventoryAllocation.components?sem.inventoryAllocation.components:{};
     let spend=0; this.catalog.forEach(p=>{ const need=this.kits.reduce((t,k)=>{const it=this.kitItemsForTerm(k,sem.id).find(i=>i.p===p.id);return t+(it?it.q*this.sales(k).purchase:0);},0); const order=Math.max(0,need-(S.adjustInv?(Number(allocatedComponents[p.id])||0):0)); if(order>0) spend+=this.best(p.id,order).ext; });
     let termRevenue=0,termCost=0,pricesComplete=true;kitsInSem.forEach(k=>{if(!this.isKitOffered(sem.id,k.id))return;const units=this.sales(k).sold,price=this.kitSalePrice(k,sem.id);if(price===null)pricesComplete=false;else termRevenue+=units*price;termCost+=units*this.kitUnitCost(k,sem.id);});
-    const hdr={title:sem.label,sub:`${kitsInSem.filter(k=>this.isKitOffered(sem.id,k.id)).length} offered · ${this.status(sem.id)} · ${this.num(sem.sales)} units ${sem.actualPending?'planned':'sold'}`,semesterControls:true,status:this.status(sem.id),statuses:['Planning','Ordering','Received','Closed'],onStatus:e=>this.setTermStatus(sem.id,e.target.value),deleteSemester:()=>this.deletePlanningSemester(sem.id),deleteStyle:this.status(sem.id)==='Planning'?'color:var(--color-accent-700)':'display:none',stats:[
-      {val:this.num(totUnits),label:'Units sold',color:'var(--color-text)'},
+    const semesterPage={kits:['Kits & demand','Set demand, packed inventory, faults, and selling prices'],kit:['Kit details','Review this semester’s component requirements and costs'],build:['Kit definitions','Edit the component list and version assigned to this semester'],list:['Procurement','Choose vendors and build the semester shopping plan'],forecast:['Forecast','Review the evidence behind this semester’s demand plan']}[effectiveView]||['Semester workspace','Plan and operate this semester'];
+    const hdr={title:sem.label+' · '+semesterPage[0],sub:semesterPage[1]+' · '+this.status(sem.id)+' · '+this.num(sem.sales)+' units '+(sem.actualPending?'planned':'sold'),semesterControls:true,status:this.status(sem.id),statuses:['Planning','Ordering','Received','Closed'],onStatus:e=>this.setTermStatus(sem.id,e.target.value),deleteSemester:()=>this.deletePlanningSemester(sem.id),deleteStyle:this.status(sem.id)==='Planning'?'color:var(--color-accent-700)':'display:none',stats:[
+      {val:this.num(totUnits),label:sem.actualPending?'Planned units':'Units sold',color:'var(--color-text)'},
       {val:pricesComplete?this.m(termRevenue).replace('.00',''):'—',label:'Revenue',color:'var(--color-text)'},
       {val:pricesComplete?this.m(termRevenue-termCost).replace('.00',''):'—',label:'Est. profit',color:'var(--color-accent-700)'},
     ]};
@@ -6246,7 +6315,7 @@ class Component extends DCLogic {
       semesterSales.note='Includes 458 wire kits (448 regular + 10 half-price Custom Amount sales) and 233 small breadboards. Credit-card fee line items are excluded from physical units.';
     }
 
-    const tabs=[this.tabDef('kits','Kits'),this.tabDef('build','Build'),this.tabDef('list','Shopping List'),this.tabDef('pricing','Pricing'),this.tabDef('search','Search'),this.tabDef('forecast','Forecast')];
+    const tabs=[];
 
     // Deliberately transient: scenario values never enter the persisted snapshot.
     const trialValues=S.priceTestValues||{},trialRows=this.kits.filter(k=>this.isKitOffered(sem.id,k.id)).map(k=>{
@@ -6294,12 +6363,12 @@ class Component extends DCLogic {
 
     // shopping list
     const listCanUseInventory=sem.inventoryApplied===true;
-    const listRows=[]; this.catalog.forEach(p=>{const rawNeed=this.kits.reduce((t,k)=>{const it=this.kitItemsForTerm(k,sem.id).find(i=>i.p===p.id);return t+(it?it.q*this.sales(k).purchase:0);},0),need=this.componentPurchaseQuantity(p.id,rawNeed);if(need<=0)return;const onhand=listCanUseInventory&&S.adjustInv?(Number(allocatedComponents[p.id])||0):0,order=Math.max(0,need-onhand),b=order>0?this.best(p.id,order):null,wire=this.wireCalculation(p.id,rawNeed);listRows.push({id:p.id,cat:p.cat,name:p.name,need,onhand,order,b,basis:wire?wire.label:'',...flag(p)});});
-    listRows.sort((a,b)=>(b.b?b.b.ext:0)-(a.b?a.b.ext:0));
-    const splitTotal=listRows.reduce((t,r)=>t+(r.b?r.b.ext:0),0);
+    const listRows=[]; this.catalog.forEach(p=>{const uses=[],rawNeed=this.kits.reduce((t,k)=>{const it=this.kitItemsForTerm(k,sem.id).find(i=>i.p===p.id),amount=it?it.q*this.sales(k).purchase:0;if(amount>0)uses.push(k.code+' · '+this.num(amount));return t+amount;},0),need=this.componentPurchaseQuantity(p.id,rawNeed);if(need<=0)return;const onhand=listCanUseInventory&&S.adjustInv?(Number(allocatedComponents[p.id])||0):0,order=Math.max(0,need-onhand),pinKey=sem.id+':'+p.id,pin=S.lineVendor[pinKey],plan=order>0?this.vendorPlan(p.id,order,pin):null,b=plan&&plan.selected||null,wire=this.wireCalculation(p.id,rawNeed);listRows.push({id:p.id,cat:p.cat,name:p.name,need,onhand,order,b,plan,pinKey,pin,usedBy:uses.join(' · '),basis:wire?wire.label:'',...flag(p)});});
+    listRows.sort((a,b)=>(b.plan&&b.plan.total||0)-(a.plan&&a.plan.total||0));
+    const splitTotal=listRows.reduce((t,r)=>t+(r.plan&&r.plan.total!=null?r.plan.total:0),0);
     const singleTotal=listRows.reduce((t,r)=>t+(r.order>0?this.bestDom(r.id,r.order).ext:0),0);
     const domOnly=listRows.reduce((t,r)=>{if(r.order<=0)return t;const j=this.vendors(r.id,r.order).find(v=>v.vendor==='Jameco'&&!v.referenceOnly&&Number.isFinite(v.ext));return t+(j?j.ext:0);},0);
-    const splitGroups={}; listRows.forEach(r=>{ if(!r.b)return; (splitGroups[r.b.vendor]=splitGroups[r.b.vendor]||{items:0,sub:0,lead:0}); splitGroups[r.b.vendor].items++; splitGroups[r.b.vendor].sub+=r.b.ext; splitGroups[r.b.vendor].lead=Math.max(splitGroups[r.b.vendor].lead,r.b.lead); });
+    const splitGroups={}; listRows.forEach(r=>{ if(!r.plan)return;(r.plan.allocations||[]).forEach(a=>{(splitGroups[a.vendor]=splitGroups[a.vendor]||{items:0,sub:0,lead:0});splitGroups[a.vendor].items++;splitGroups[a.vendor].sub+=a.cost;const lm=String(a.lead||'').match(/\d+/);splitGroups[a.vendor].lead=Math.max(splitGroups[a.vendor].lead,lm?Number(lm[0]):0);}); });
     const split=Object.entries(splitGroups).sort((a,b)=>b[1].sub-a[1].sub).map(([v,d])=>({vendor:v,items:d.items+' line items',subtotal:this.m(d.sub),lead:'~'+d.lead+' days'}));
     const nudges=[]; listRows.forEach(r=>{ if(r.order<=0)return; const tiers=[100,500,1000]; const nt=tiers.find(t=>t>r.order); if(nt&&r.order>=nt*0.78){ const dv=this.vendors(r.id,r.order).find(v=>v.vendor==='Jameco'); const uNow=this.unitAt(this.map[r.id].base,1.0,r.order),uNext=this.unitAt(this.map[r.id].base,1.0,nt); const save=(uNow-uNext)*nt; if(save>0.5) nudges.push({text:`${r.name}: buy ${this.num(nt-r.order)} more (→ ${this.num(nt)}) to drop to ${this.mu(uNext)}/unit at Jameco.`,save:this.m(save),_s:save}); } });
     nudges.sort((a,b)=>b._s-a._s);
@@ -6310,28 +6379,28 @@ class Component extends DCLogic {
       {val:this.m(splitTotal).replace('.00',''),label:'Split-cart total',color:'var(--color-accent-700)'},
       {val:this.m(domOnly-splitTotal).replace('.00',''),label:'Saved vs. Jameco-only',color:'var(--color-accent-700)'},
     ];
-    const overrides=Object.keys(S.lineVendor).length;
+    const overrides=Object.keys(S.lineVendor).filter(key=>key.startsWith(sem.id+':')).length;
     const list={summary:listSummary,
-      bags:listBags,rows:listRows.map(r=>({name:r.name,cat:r.cat,basis:r.basis,needed:this.num(r.need),onhand:r.onhand?this.num(r.onhand):'—',order:this.num(r.order),
-        unit:r.b&&Number.isFinite(r.b.unit)?this.mu(r.b.unit):'—',ext:r.b&&Number.isFinite(r.b.ext)?this.m(r.b.ext):'—',lead:r.b?(r.b.leadLabel||('~'+r.b.lead+'d')):'—',evidence:r.b?(r.b.verified?'API':r.b.manual?'Manual · check':'Estimate only'):'—',evidenceClass:r.b&&r.b.verified?'tag-accent':'tag-outline',url:r.b&&r.b.productUrl||'#',linkStyle:r.b&&r.b.productUrl?'display:block;font-size:10px;color:var(--color-accent-700);font-weight:700;margin-top:3px':'display:none',flag:r.flag,flagStyle:r.flagStyle,open:()=>this.openPart(r.id),
-        vendorSel:S.lineVendor[r.id]||'auto',vendorOpts:[{id:'auto',label:'Auto'},...Array.from(new Set(this.vendors(r.id,Math.max(1,r.order)).map(v=>v.vendor))).map(v=>({id:v,label:v}))],stop:e=>e.stopPropagation(),
-        vendorStyle:`border:1px solid ${S.lineVendor[r.id]?'var(--color-accent)':'var(--color-divider)'};background:${S.lineVendor[r.id]?'var(--color-accent-100)':'transparent'};font-family:var(--font-body);font-size:12px;padding:3px 5px;min-height:0;cursor:pointer;max-width:130px`,
-        onVendor:e=>{e.stopPropagation(); const lv={...S.lineVendor}; if(e.target.value==='auto') delete lv[r.id]; else lv[r.id]=e.target.value; this.setState({lineVendor:lv});}})),
-      split,splitNote:'Each line is routed by the sourcing rule below. Override any single line with its own dropdown.',nudges:nudges.slice(0,5),
+      bags:listBags,rows:listRows.map(r=>{const choices=this.vendors(r.id,Math.max(1,r.order)).filter(v=>v.manual&&!v.referenceOnly&&Number.isFinite(v.unit)&&v.meetsRequirements!==false);return{name:r.name,cat:r.cat,basis:r.basis,usedBy:r.usedBy||'—',needed:this.num(r.need),onhand:r.onhand?this.num(r.onhand):'—',order:this.num(r.order),
+        unit:r.b&&Number.isFinite(r.b.unit)?this.mu(r.b.unit):'—',landed:r.plan&&r.plan.total!=null?this.m(r.plan.total):'—',lead:r.b?(r.b.leadLabel||('~'+r.b.lead+'d')):'—',decision:r.plan?r.plan.decision:'No order required.',evidence:r.b?'Officer checked':'Add vendor',evidenceClass:r.b?'tag-neutral':'tag-accent',url:r.b&&r.b.productUrl||'#',linkStyle:r.b&&r.b.productUrl?'display:block;font-size:10px;color:var(--color-accent-700);font-weight:700;margin-top:3px':'display:none',flag:r.flag,flagStyle:r.flagStyle,open:()=>this.openPart(r.id),
+        vendorSel:r.pin||'auto',vendorOpts:[{id:'auto',label:'Recommended'},...choices.map(v=>({id:v.vendor,label:v.vendor+' · '+this.m(v.landed??v.ext)+' landed · '+(v.stock==null?'stock ?':this.num(v.stock)+' left')+' · '+v.leadLabel}))],stop:e=>e.stopPropagation(),
+        vendorStyle:`border:1px solid ${r.pin?'var(--color-accent)':'var(--color-divider)'};background:${r.pin?'var(--color-accent-100)':'var(--color-surface)'};font-family:var(--font-body);font-size:12px;padding:4px 6px;min-height:30px;cursor:pointer;max-width:210px`,
+        onVendor:e=>{e.stopPropagation(); const lv={...S.lineVendor}; if(e.target.value==='auto') delete lv[r.pinKey]; else lv[r.pinKey]=e.target.value; this.setState({lineVendor:lv});}};}),
+      split,splitNote:'Landed totals include the shipping cost saved on each vendor listing. When one vendor lacks stock, the recommendation splits the line across the next saved source.',nudges:nudges.slice(0,5),
       toggleInv:()=>{if(listCanUseInventory)this.setState({adjustInv:!S.adjustInv});else this.flash('Current inventory can only be allocated to the immediately next semester');},toggleLabel:listCanUseInventory?((S.adjustInv?'✓ ':'')+'Use captured inventory allocation'):'Future plan · inventory excluded',
       toggleStyle:`border:1px solid var(--color-divider);background:${listCanUseInventory&&S.adjustInv?'var(--color-accent-100)':'var(--color-surface)'};color:${listCanUseInventory&&S.adjustInv?'var(--color-accent-800)':'var(--color-neutral-600)'};font-size:13px;padding:9px 14px;cursor:${listCanUseInventory?'pointer':'not-allowed'};font-weight:600;height:fit-content`,
-      policyLabel:'Sourcing rule',
-      policies:[['best','Cheapest anywhere'],['domestic','US vendors only'],['fastest','Fastest delivery'],['Jameco','Jameco only'],['DigiKey','DigiKey only'],['Mouser','Mouser only'],['Newark','Newark only']].map(([id,label])=>({label,go:()=>this.setState({vendorPolicy:id}),
+      policyLabel:'Default recommendation',
+      policies:[['best','Lowest landed cost'],['domestic','US sources only'],['fastest','Fastest delivery']].map(([id,label])=>({label,go:()=>this.setState({vendorPolicy:id}),
         style:`border:1px solid var(--color-divider);border-right-width:0;background:${S.vendorPolicy===id?'var(--color-accent)':'var(--color-surface)'};color:${S.vendorPolicy===id?'var(--color-bg)':'var(--color-text)'};font-size:11.5px;font-weight:600;padding:7px 11px;cursor:pointer;white-space:nowrap`})),
       overrideNote:overrides?overrides+' line'+(overrides>1?'s':'')+' manually pinned to a vendor':'No manual vendor pins',
-      clearOverrides:()=>{this.setState({lineVendor:{}});this.flash('Vendor pins cleared');},clearStyle:overrides?'border:0;background:transparent;color:var(--color-accent-700);font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline':'display:none'};
+      clearOverrides:()=>{const lv={...S.lineVendor};Object.keys(lv).filter(key=>key.startsWith(sem.id+':')).forEach(key=>delete lv[key]);this.setState({lineVendor:lv});this.flash(sem.label+' vendor choices cleared');},clearStyle:overrides?'border:0;background:transparent;color:var(--color-accent-700);font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline':'display:none'};
 
     // pricing
     const pq=(S.pricingQuery||'').toLowerCase();
     const pParts=this.catalog.filter(p=>!pq||p.name.toLowerCase().includes(pq)||p.cat.toLowerCase().includes(pq)).map(p=>({name:p.name,cat:p.cat,go:()=>this.setState({pricingPartId:p.id,pricingQty:this.neededFor(p.id)||100}),style:`width:100%;text-align:left;border:0;border-bottom:1px solid var(--color-divider);background:${p.id===S.pricingPartId?'var(--color-accent-100)':'transparent'};padding:9px 12px;cursor:pointer`}));
     const pp=this.map[S.pricingPartId], pqty=S.pricingQty||1;
     const pv=this.vendors(S.pricingPartId,pqty),eligiblePv=this.quotePool(pv); const pBest=eligiblePv.reduce((a,b)=>b.ext<a.ext?b:a), pFast=this.fastest(eligiblePv);
-    const pRows=pv.map(v=>{ const isBest=v===pBest,isFast=v===pFast,badRequirement=v.meetsRequirements===false,hasPrice=Number.isFinite(v.unit); const badge=badRequirement?'REJECTED':v.referenceOnly?'LINK ONLY':isBest&&isFast?'CHEAPEST · FAST':isBest?'CHEAPEST':isFast&&v.lead<999?'FASTEST':'';const checked=v.checkedAt?new Date(v.checkedAt).toLocaleDateString():'never'; return {vendor:v.vendor,sku:v.sku||'No saved SKU',breaks:v.breaks.length?v.breaks.map(b=>(b.q>=1000?'1k':b.q)+': '+this.mu(b.u)).join('   '):'Link saved · add price tiers',unit:hasPrice?this.mu(v.unit):'—',ext:Number.isFinite(v.ext)?this.m(v.ext):'—',orderQty:hasPrice?this.num(v.orderQty||pqty):'—',lead:v.leadLabel||('~'+v.lead+'d'),stock:v.stock==null?'—':this.num(v.stock),source:v.verified?'API · auto-update':v.referenceOnly?'Imported link · check':v.manual?'Manual · check required':'Estimate only',sourceClass:v.verified?'tag-accent':v.manual?'tag-neutral':'tag-outline',requirement:v.meetsRequirements===true?(v.verified?'Gemini compatibility review passed'+(v.requirementScore!=null?' · '+v.requirementScore+'%':''):(v.requirementReason||'Officer marked compatible · checked '+checked)):v.meetsRequirements===false?(v.requirementReason||'Does not meet requirements'):'No live evidence; do not order without checking.',badge,badgeStyle:badge?`font-size:9px;font-weight:700;letter-spacing:.05em;padding:2px 7px;background:${isBest?'var(--color-accent)':'var(--color-neutral-800)'};color:var(--color-bg)`:'display:none',rowStyle:isBest?'background:var(--color-accent-100)':badRequirement?'opacity:.62':'',url:v.productUrl||'#',linkStyle:v.productUrl?'font-size:11px;font-weight:700;color:var(--color-accent-700);white-space:nowrap':'display:none',editStyle:v.manual?'font-size:10.5px;padding:2px 5px':'display:none',edit:e=>{e.preventDefault();this.openSupplierForm(pp.id,v.id);},remove:e=>{e.preventDefault();this.deleteManualSupplier(pp.id,v.id);}}; });
+    const pRows=pv.map(v=>{ const isBest=v===pBest,isFast=v===pFast,badRequirement=v.meetsRequirements===false,hasPrice=Number.isFinite(v.unit); const badge=badRequirement?'REJECTED':v.referenceOnly?'LINK ONLY':isBest&&isFast?'CHEAPEST · FAST':isBest?'CHEAPEST':isFast&&v.lead<999?'FASTEST':'';const checked=v.checkedAt?new Date(v.checkedAt).toLocaleDateString():'never'; return {vendor:v.vendor,sku:v.sku||'No saved SKU',breaks:v.breaks.length?v.breaks.map(b=>(b.q>=1000?'1k':b.q)+': '+this.mu(b.u)).join('   '):'Link saved · add price tiers',unit:hasPrice?this.mu(v.unit):'—',ext:Number.isFinite(v.ext)?this.m(v.ext):'—',orderQty:hasPrice?this.num(v.orderQty||pqty):'—',lead:v.leadLabel||('~'+v.lead+'d'),stock:v.stock==null?'—':this.num(v.stock),source:v.referenceOnly?'Saved link · check':'Officer maintained',sourceClass:v.manual?'tag-neutral':'tag-outline',requirement:v.meetsRequirements===true?(v.requirementReason||'Officer marked compatible · checked '+checked):v.meetsRequirements===false?(v.requirementReason||'Does not meet requirements'):'Verify the exact listing before ordering.',badge,badgeStyle:badge?`font-size:9px;font-weight:700;letter-spacing:.05em;padding:2px 7px;background:${isBest?'var(--color-accent)':'var(--color-neutral-800)'};color:var(--color-bg)`:'display:none',rowStyle:isBest?'background:var(--color-accent-100)':badRequirement?'opacity:.62':'',url:v.productUrl||'#',linkStyle:v.productUrl?'font-size:11px;font-weight:700;color:var(--color-accent-700);white-space:nowrap':'display:none',editStyle:v.manual?'font-size:10.5px;padding:2px 5px':'display:none',edit:e=>{e.preventDefault();this.openSupplierForm(pp.id,v.id);},remove:e=>{e.preventDefault();this.deleteManualSupplier(pp.id,v.id);}}; });
     const need=this.neededFor(S.pricingPartId)||100;
     const presetVals=[10,100,need,Math.max(need,1000)].filter((v,i,a)=>a.indexOf(v)===i);
     const presets=presetVals.map(v=>({label:v===need?'Need · '+this.num(v):this.num(v),go:()=>this.setState({pricingQty:v}),style:`border:1px solid var(--color-divider);background:${v===pqty?'var(--color-accent)':'var(--color-surface)'};color:${v===pqty?'var(--color-bg)':'var(--color-text)'};font-size:12px;padding:6px 11px;cursor:pointer;font-weight:600`}));
@@ -6352,8 +6421,8 @@ class Component extends DCLogic {
     ];
     const sd=S.supplierDraft||{};
     const setSupplier=(key,value)=>this.setState({supplierDraft:{...sd,[key]:value}});
-    const pricing={query:S.pricingQuery||'',onQuery:e=>this.setState({pricingQuery:e.target.value}),parts:pParts,name:pp.name,cat:pp.cat,mfr:pp.mfr+' · '+pp.pkg,qty:pqty,onQty:e=>this.setState({pricingQty:parseInt(e.target.value)||0}),presets,rows:pRows,manualSources,spark:pspark,nudge:pNudge,refresh:()=>this.refreshSupplierQuotes(),refreshLabel:S.quoteLoading?'Refreshing APIs + Gemini…':'Refresh APIs + AI review',addManual:()=>this.openSupplierForm(pp.id),quoteStatus:S.quoteMessage||(latestQuote?'Saved supplier data last checked '+new Date(latestQuote.checkedAt).toLocaleString()+'. API rows refresh automatically; manual rows always require a final link check.':'No reusable supplier table saved yet. Add a manual product link and bulk tiers, or configure a supported supplier API.'),
-      form:{style:S.supplierFormOpen?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);background:var(--color-surface);padding:14px;margin-bottom:14px':'display:none',title:S.supplierEditingId?'Edit manual supplier':'Add manual supplier',vendor:sd.vendor||'',sku:sd.sku||'',url:sd.productUrl||'',breaks:sd.priceBreaks||'',stock:sd.stock==null?'':sd.stock,lead:sd.leadTime||'',checked:sd.checkedAt||'',notes:sd.notes||'',domestic:sd.domestic!==false,compatible:sd.compatible!==false,onVendor:e=>setSupplier('vendor',e.target.value),onSku:e=>setSupplier('sku',e.target.value),onUrl:e=>setSupplier('productUrl',e.target.value),onBreaks:e=>setSupplier('priceBreaks',e.target.value),onStock:e=>setSupplier('stock',e.target.value),onLead:e=>setSupplier('leadTime',e.target.value),onChecked:e=>setSupplier('checkedAt',e.target.value),onNotes:e=>setSupplier('notes',e.target.value),onDomestic:e=>setSupplier('domestic',e.target.checked),onCompatible:e=>setSupplier('compatible',e.target.checked),save:()=>this.saveManualSupplier(),close:()=>this.setState({supplierFormOpen:false,supplierEditingId:null})},
+    const pricing={query:S.pricingQuery||'',onQuery:e=>this.setState({pricingQuery:e.target.value}),parts:pParts,name:pp.name,cat:pp.cat,mfr:pp.mfr+' · '+pp.pkg,qty:pqty,onQty:e=>this.setState({pricingQty:parseInt(e.target.value)||0}),presets,rows:pRows,manualSources,spark:pspark,nudge:pNudge,addManual:()=>this.openSupplierForm(pp.id),quoteStatus:S.quoteMessage||(latestQuote?'Officer-maintained supplier data last checked '+new Date(latestQuote.checkedAt).toLocaleString()+'. Verify the saved link before ordering.':'No reusable vendor listing is saved yet. Open the component and add its product link, bulk tiers, stock, shipping, and lead time.'),
+      form:{style:S.supplierFormOpen?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);background:var(--color-surface);padding:14px;margin-bottom:14px':'display:none',title:S.supplierEditingId?'Edit vendor listing':'Add vendor listing',vendor:sd.vendor||'',sku:sd.sku||'',url:sd.productUrl||'',breaks:sd.priceBreaks||'',shipping:sd.shippingCost==null?'':sd.shippingCost,stock:sd.stock==null?'':sd.stock,lead:sd.leadTime||'',checked:sd.checkedAt||'',notes:sd.notes||'',domestic:sd.domestic!==false,compatible:sd.compatible!==false,onVendor:e=>setSupplier('vendor',e.target.value),onSku:e=>setSupplier('sku',e.target.value),onUrl:e=>setSupplier('productUrl',e.target.value),onBreaks:e=>setSupplier('priceBreaks',e.target.value),onShipping:e=>setSupplier('shippingCost',e.target.value),onStock:e=>setSupplier('stock',e.target.value),onLead:e=>setSupplier('leadTime',e.target.value),onChecked:e=>setSupplier('checkedAt',e.target.value),onNotes:e=>setSupplier('notes',e.target.value),onDomestic:e=>setSupplier('domestic',e.target.checked),onCompatible:e=>setSupplier('compatible',e.target.checked),save:()=>this.saveManualSupplier(),close:()=>this.setState({supplierFormOpen:false,supplierEditingId:null})},
       paidNote:'What this part actually cost in each recorded semester. Closed terms show the paid price off the receipt, not a live quote.',
       paidRows:this.terms.slice(0,8).map(t=>{ const pd=this.paid(S.pricingPartId,t.id); const q=this.termNeed(S.pricingPartId,[t.id]);
         return {term:t.label,status:this.status(t.id),unit:pd?this.mu(pd.unit):'—',vendor:pd?pd.vendor:'—',qty:q?this.num(q):'—',
@@ -6386,7 +6455,7 @@ class Component extends DCLogic {
     // modal
     let modal={open:false};
     if(S.partId){
-      const p=this.map[S.partId],mv=this.vendors(S.partId,100),mPool=this.quotePool(mv),mBest=mPool.reduce((a,b)=>b.ext<a.ext?b:a),mFast=this.fastest(mPool);
+      const p=this.map[S.partId],mv=this.vendors(S.partId,100).filter(v=>v.manual),mPool=mv.filter(v=>!v.referenceOnly&&Number.isFinite(v.unit)&&v.meetsRequirements!==false),mBest=mPool.length?mPool.reduce((a,b)=>(b.landed??b.ext)<(a.landed??a.ext)?b:a):null,mFast=this.fastest(mPool);
       const mtab=(id,label)=>({label,go:()=>this.setState({modalTab:id}),style:`background:transparent;border:0;border-bottom:2px solid ${S.modalTab===id?'var(--color-accent)':'transparent'};color:${S.modalTab===id?'var(--color-accent)':'var(--color-neutral-700)'};font-family:var(--font-heading);font-weight:800;font-size:13px;padding:11px 14px;margin-bottom:-2px;cursor:pointer`});
       const mhist=this.history(S.partId),rcpts=this.partOrders(S.partId).map(x=>({date:x.order.date,vendor:x.order.vendor,po:x.order.id,qty:x.qty,unit:x.unit,total:x.qty*x.unit,file:x.order.receiptUrl||'#',terms:x.order.terms.map(t=>(this.termMap[t]||{}).label||t),filed:Boolean(x.order.receiptUrl||x.order.receipt)}));
       const componentFlags=Array.isArray(p.flags)?p.flags:[];
@@ -6396,7 +6465,8 @@ class Component extends DCLogic {
         role:p.role,specs:(p.specs.length?p.specs:[['Package',p.pkg],['Manufacturer',p.mfr]]).map(s=>({k:s[0],v:s[1]})),datasheet:p.ds||('https://www.google.com/search?q='+encodeURIComponent(p.name+' '+p.mfr+' datasheet')),datasheetLabel:p.ds?'Open approved reference datasheet':'Find '+p.name+' datasheet',dsSource:p.ds?'Approved reference':'Reference search',usedIn:this.usedInKits(S.partId).map(u=>({name:u.code+' — '+u.name,qty:u.qty})),
         wire:{style:p.purchaseMode==='spool'?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);padding:12px;margin-top:14px':'display:none',spool:p.spoolLengthFt||'',cut:p.cutLengthIn||'',leeway:p.leewayPct==null?5:p.leewayPct,onSpool:e=>this.updateWireConfig(p.id,'spoolLengthFt',e.target.value),onCut:e=>this.updateWireConfig(p.id,'cutLengthIn',e.target.value),onLeeway:e=>this.updateWireConfig(p.id,'leewayPct',e.target.value),example:(this.wireCalculation(p.id,100)||{}).label||''},
         aiDescribe:()=>this.generateAiDescription(p.id),aiDescribeLabel:S.aiBusy==='description'?'Gemini drafting…':'✨ Draft description with Gemini',aiDescriptionDraft:S.aiDescriptionDraft||'',onAiDescription:e=>this.setState({aiDescriptionDraft:e.target.value}),aiDescriptionStyle:S.aiDescriptionDraft?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);padding:10px;margin:8px 0 12px':'display:none',discardAiDescription:()=>this.setState({aiDescriptionDraft:''}),applyAiDescription:()=>this.applyAiDescription(p.id),aiMessage:S.aiMessage||'AI actions produce reviewable drafts and never overwrite component data automatically.',
-        vendors:mv.map(v=>{const isBest=v===mBest,isFast=v===mFast,badge=v.meetsRequirements===false?'REJECTED':v.referenceOnly?'LINK':isBest?'CHEAPEST':isFast&&v.lead<999?'FAST':v.verified?'API':v.manual?'MANUAL':'ESTIMATE';return{vendor:v.vendor,sku:v.sku||'—',unit:Number.isFinite(v.unit)?this.mu(v.unit):'—',lead:v.leadLabel||('~'+v.lead+'d'),stock:v.stock==null?'—':this.num(v.stock),source:v.verified?'API · auto':v.referenceOnly?'Imported link · check':v.manual?'Manual · check':'Estimate only',url:v.productUrl||'#',linkStyle:v.productUrl?'font-size:11px;font-weight:700;color:var(--color-accent-700)':'display:none',badge,badgeStyle:`font-size:9px;font-weight:700;padding:1px 5px;background:${isBest?'var(--color-accent)':'var(--color-neutral-800)'};color:var(--color-bg)`,rowStyle:isBest?'background:var(--color-accent-100)':v.meetsRequirements===false?'opacity:.62':''};}),
+        addVendor:()=>this.openSupplierForm(p.id),supplierForm:pricing.form,vendorsEmptyStyle:mv.length?'display:none':'font-size:13px;color:var(--color-neutral-600);padding:20px;text-align:center;border:1px dashed var(--color-divider);margin-top:12px',
+        vendors:mv.map(v=>{const isBest=v===mBest,isFast=v===mFast,badge=v.meetsRequirements===false?'INCOMPATIBLE':v.referenceOnly?'LINK ONLY':isBest&&isFast?'BEST · FAST':isBest?'LOWEST LANDED':isFast&&v.lead<999?'FASTEST':'';const checked=v.checkedAt?new Date(v.checkedAt).toLocaleDateString():'Never';return{vendor:v.vendor,sku:v.sku||'No SKU saved',breaks:v.breaks.length?v.breaks.map(b=>this.num(b.q)+' @ '+this.mu(b.u)).join(' · '):'Link only',unit:Number.isFinite(v.unit)?this.mu(v.unit):'—',shipping:this.m(v.ship||0),landed:Number.isFinite(v.landed)?this.m(v.landed):'—',lead:v.leadLabel||'Not stated',stock:v.stock==null?'Unknown':this.num(v.stock),checked,url:v.productUrl||'#',linkStyle:v.productUrl?'font-size:11px;font-weight:700;color:var(--color-accent-700);margin-right:4px':'display:none',badge,badgeStyle:badge?`font-size:8.5px;font-weight:700;padding:2px 5px;background:${isBest?'var(--color-accent)':'var(--color-neutral-800)'};color:var(--color-bg)`:'display:none',rowStyle:isBest?'background:var(--color-accent-100)':v.meetsRequirements===false?'opacity:.62':'',editStyle:'font-size:10.5px;padding:2px 5px',edit:e=>{e.preventDefault();this.openSupplierForm(p.id,v.id);},remove:e=>{e.preventDefault();this.deleteManualSupplier(p.id,v.id);}}}),
         sparkBig:this.spark(mhist,600,120),histRows:mhist.slice().reverse().map((h,i,arr)=>{const prev=arr[i+1],chg=prev?Math.round((h.price/prev.price-1)*100):0;return{year:h.year,price:this.mu(h.price),chg:prev?(chg>=0?'+':'')+chg+'%':'—',color:chg>0?'var(--color-accent-700)':'var(--color-neutral-600)'};}),
         receipts:rcpts.map(r=>({date:r.date,vendor:r.vendor,po:r.po,qty:this.num(r.qty),unit:this.mu(r.unit),total:this.m(r.total),file:r.file,terms:r.terms,fileLabel:r.filed?'Receipt ↗':'Missing',go:e=>{e.stopPropagation();this.setState({partId:null,scope:'global',gview:'orders',orderOpen:r.po});}})),receiptNote:'Receipts are filed against the purchase order, not the part — one order can cover several semesters and every part on it links back here.',receiptsEmptyStyle:rcpts.length?'display:none':'font-size:13px;color:var(--color-neutral-600);padding:20px;text-align:center;border:1px dashed var(--color-divider);margin-top:12px',addReceipt:()=>this.addReceipt(),
         aiReplace:()=>this.researchAiReplacements(p.id),aiReplaceLabel:S.aiBusy==='replacements'?'Gemini researching…':'✨ Find replacement candidates with Gemini',aiReplacementNote:S.aiMessage||'Gemini uses saved specifications and every kit requirement. Results are research leads, not live availability or automatic approvals.',aiResultsStyle:(S.aiReplacementResults||[]).length?'margin-bottom:14px':'display:none',aiResults:(S.aiReplacementResults||[]).map(r=>({...r,searchUrl:'https://www.google.com/search?q='+encodeURIComponent((r.partNumber||'')+' '+(r.manufacturer||'')+' datasheet distributor'),approve:()=>this.approveAiReplacement(p.id,r)})),
@@ -6404,7 +6474,7 @@ class Component extends DCLogic {
     }
 
     // ── GLOBAL (all-semester) WORKSPACE ─────────────────────────────────────
-    const glob=S.scope==='global', G=S.gview==='trends'?'accuracy':S.gview;
+    const glob=S.scope==='global', requestedG=S.gview==='trends'?'accuracy':S.gview, G=requestedG==='pricing'||requestedG==='search'?'catalog':requestedG;
     const asc=this.terms.slice().reverse();
     const openIds=this.terms.filter(t=>this.status(t.id)!=='Closed').map(t=>t.id);
     if(!this._cpu){ let c=0,u=0; this.kits.forEach(k=>{ const s=k.sp26; u+=s.purchase; c+=k.items.reduce((t,it)=>t+this.cheapest(it.p,it.q*s.purchase).ext,0); }); this._cpu=c/Math.max(1,u); }
@@ -6412,11 +6482,14 @@ class Component extends DCLogic {
 
     const packedAvailable=this.kits.filter(k=>!k.individual).reduce((total,k)=>total+this.availableInventory('kit',k.id),0),generalAvailable=this.kits.filter(k=>k.individual).reduce((total,k)=>total+this.availableInventory('kit',k.id),0);
     const navMeta={inventory:this.num(packedAvailable+generalAvailable)+' stocked',catalog:this.catalog.length+' parts',orders:this.orders.length+' logged',combine:Object.values(S.combine).filter(Boolean).length+' picked'};
-    const gnav=[['home','Overview'],['inventory','Inventory'],['accuracy','Forecast & trends'],['combine','Combine orders'],['catalog','Component catalog'],['library','Kit library'],['pricing','Vendor pricing'],['search','Quick search'],['orders','Orders & receipts'],['history','Edit history']].map(([id,label])=>{
+    const gnav=[['home','Overview'],['inventory','Inventory'],['accuracy','Forecast & trends'],['combine','Combine orders'],['catalog','Component catalog'],['library','Kit library'],['orders','Orders & receipts'],['history','Edit history']].map(([id,label])=>{
       const on=glob&&(G===id||(id==='library'&&(G==='build'||G==='kit-history')));
       return {label,meta:navMeta[id]||'',metaStyle:'font-size:10px;color:var(--color-neutral-600)',go:()=>this.setState({scope:'global',gview:id,sidebarOpen:false}),
         style:`width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;border:0;border-left:3px solid ${on?'var(--color-accent)':'transparent'};background:${on?'var(--color-bg)':'transparent'};color:${on?'var(--color-accent-800)':'var(--color-text)'};font-weight:600;font-size:12.5px;padding:7px 9px;margin-bottom:1px;cursor:pointer`};
     });
+    const workspaceNavTitle=sem.label+' workspace';
+    const workspaceNavStyle=glob?'display:none':'display:block';
+    const workspaceNav=[['kits','Kits & demand'],['build','Kit definitions'],['list','Procurement'],['forecast','Forecast']].map(([id,label])=>{const active=effectiveView===id||(id==='kits'&&effectiveView==='kit');return{label,go:()=>{this.setState({sidebarOpen:false});if(id==='build'){const kitId=S.builderKitId||this.kits[0].id;this.builderDraft=null;this.startKitEdit(kitId,sem.id);return;}this.setState({view:id,kitId:id==='kits'?null:S.kitId});},style:`width:100%;text-align:left;border:0;border-left:3px solid ${active?'var(--color-accent)':'transparent'};background:${active?'var(--color-bg)':'transparent'};color:${active?'var(--color-accent-800)':'var(--color-text)'};font-weight:600;font-size:12.5px;padding:7px 9px;margin-bottom:1px;cursor:pointer`};});
 
     const semGroups=[];
     this.semesters.forEach(s=>{
@@ -6460,7 +6533,7 @@ class Component extends DCLogic {
     const lowStock=this.catalog.filter(p=>p.stock>0&&p.stock<this.termNeed(p.id,openIds)*0.15).slice(0,2);
     lowStock.forEach(p=>alerts.push({kind:'Inventory',title:p.name+' nearly out',detail:this.num(p.stock)+' on hand against '+this.num(this.termNeed(p.id,openIds))+' needed',bar:'var(--color-neutral-700)',bg:'var(--color-surface)',go:()=>this.openPart(p.id)}));
     const home={kpis:homeKpis,bars,barLabels:bars.bars.filter(b=>b.show),legend:['Spring','Summer','Fall'].map(s=>({name:s,color:this.seasonColor(s)})),top:topRows,alerts:alerts.slice(0,5),
-      quick:[{label:'Count current inventory →',go:()=>this.setState({scope:'global',gview:'inventory'})},{label:'Combine open semesters →',go:()=>this.setState({scope:'global',gview:'combine'})},{label:'Score the forecast →',go:()=>this.setState({scope:'global',gview:'accuracy'})},{label:'Compare vendor pricing →',go:()=>this.setState({scope:'global',gview:'pricing'})}]};
+      quick:[{label:'Count current inventory →',go:()=>this.setState({scope:'global',gview:'inventory'})},{label:'Combine open semesters →',go:()=>this.setState({scope:'global',gview:'combine'})},{label:'Score the forecast →',go:()=>this.setState({scope:'global',gview:'accuracy'})},{label:'Manage component vendors →',go:()=>this.setState({scope:'global',gview:'catalog'})}]};
 
     // Inventory
     const invQuery=(S.inventoryQuery||'').toLowerCase();
@@ -6563,10 +6636,13 @@ class Component extends DCLogic {
     this.catalog.forEach(p=>{
       const per=selIds.map(id=>this.termNeed(p.id,[id]));
       const separateTotal=per.reduce((a,b)=>a+b,0),tot=this.termNeed(p.id,selIds); if(!tot&&!separateTotal) return;
-      const sep=selIds.reduce((t,id,i)=>t+(per[i]?this.best(p.id,per[i]).ext:0),0);
-      const combinedBest=this.best(p.id,Math.max(1,tot)),cmb=tot?combinedBest.ext:0,wire=this.wireCalculation(p.id,this.termRawNeed(p.id,selIds));
+      const termPins=selIds.map(id=>S.lineVendor[id+':'+p.id]).filter(Boolean),uniquePins=[...new Set(termPins)],combinedKey='combined:'+selIds.slice().sort().join('+')+':'+p.id,combinedPin=S.lineVendor[combinedKey]||(uniquePins.length===1?uniquePins[0]:'');
+      const sep=selIds.reduce((t,id,i)=>{if(!per[i])return t;const plan=this.vendorPlan(p.id,per[i],S.lineVendor[id+':'+p.id]);return t+(plan.total||0);},0);
+      const plan=this.vendorPlan(p.id,Math.max(1,tot),combinedPin),combinedBest=plan.selected||this.best(p.id,Math.max(1,tot)),cmb=tot&&plan.total!=null?plan.total:0,wire=this.wireCalculation(p.id,this.termRawNeed(p.id,selIds));
       sepCost+=sep; combCost+=cmb;
-      combRows.push({name:p.name,cells:per.map(v=>this.num(v)),total:this.num(tot),basis:wire?wire.label:'',vendor:combinedBest.vendor,evidence:combinedBest.verified?'API · auto-update':combinedBest.manual?'Manual price · re-check':'Estimate only · add listing',url:combinedBest.productUrl||'#',linkStyle:combinedBest.productUrl?'font-size:10px;color:var(--color-accent-700);font-weight:700':'display:none',unitAlone:separateTotal?this.mu(sep/separateTotal):'—',unitComb:tot?this.mu(cmb/tot):'—',saved:this.m(sep-cmb),_s:sep-cmb,open:()=>this.openPart(p.id)});
+      const conflict=uniquePins.length>1?'Semester choices conflict: '+uniquePins.join(' vs. ')+'. ':'';
+      const choices=this.vendors(p.id,Math.max(1,tot)).filter(v=>v.manual&&!v.referenceOnly&&Number.isFinite(v.unit)&&v.meetsRequirements!==false);
+      combRows.push({id:p.id,name:p.name,cells:per.map(v=>this.num(v)),total:this.num(tot),basis:wire?wire.label:'',vendor:combinedBest.vendor,vendorSel:S.lineVendor[combinedKey]||'auto',vendorOpts:[{id:'auto',label:uniquePins.length===1?'Use '+uniquePins[0]:'Recommended'},...choices.map(v=>({id:v.vendor,label:v.vendor+' · '+this.m(v.landed??v.ext)+' landed · '+(v.stock==null?'stock ?':this.num(v.stock)+' left')+' · '+v.leadLabel}))],vendorStyle:`border:1px solid ${S.lineVendor[combinedKey]?'var(--color-accent)':'var(--color-divider)'};background:${S.lineVendor[combinedKey]?'var(--color-accent-100)':'var(--color-surface)'};font-size:11.5px;padding:4px 6px;max-width:240px`,decision:conflict+plan.decision,url:combinedBest.productUrl||'#',linkStyle:combinedBest.productUrl?'font-size:10px;color:var(--color-accent-700);font-weight:700':'display:none',unitAlone:separateTotal&&sep?this.mu(sep/separateTotal):'—',unitComb:tot&&cmb?this.mu(cmb/tot):'—',saved:this.m(sep-cmb),_s:sep-cmb,stop:e=>e.stopPropagation(),onVendor:e=>{e.stopPropagation();const lv={...S.lineVendor};if(e.target.value==='auto')delete lv[combinedKey];else lv[combinedKey]=e.target.value;this.setState({lineVendor:lv});},open:()=>this.openPart(p.id)});
     });
     combRows.sort((a,b)=>b._s-a._s);
     const combBags=this.bagTypes.map(b=>{const need=this.bagNeed(b.id,selIds),used=this.kits.filter(k=>selIds.some(id=>{const v=this.versionFor(k.id,id);return v&&v.bagTypeId===b.id&&this.sales(k,id).purchase>0;})).map(k=>k.code);return{name:b.name,size:b.size||'Size not entered',usedBy:used.length?used.join(', '):'—',gross:this.num(need.gross),available:this.num(need.available),needed:this.num(need.needed),packs:this.num(need.packs),vendor:b.preferredVendor||'Supplier not selected',url:b.productUrl||'#',linkStyle:b.productUrl?'display:block;font-size:10px;color:var(--color-accent-700);font-weight:700;margin-top:2px':'display:none',cost:need.cost==null?'—':this.m(need.cost),color:need.needed?'var(--color-accent-700)':'var(--color-text)'};}).filter(b=>b.usedBy!=='—'||Number(String(b.needed).replace(/,/g,''))>0);
@@ -6624,32 +6700,29 @@ class Component extends DCLogic {
 
     // Orders & receipts
     const ordTotal=o=>o.lines.reduce((t,l)=>t+l[1]*l[2],0);
-    const od=this.orderDraft||{id:'',date:'',vendor:'',status:'draft',terms:[],receiptUrl:'',notes:'',lines:[]};
+    const od=this.orderDraft||{id:'',date:'',vendor:'',status:'draft',terms:[],receiptUrl:'',trackingNumber:'',trackingUrl:'',carrier:'',notes:'',lines:[]};
     const ord={note:'Bulk and one-off purchases live together. Save the PO details, the exact paid prices, and a receipt link; those paid prices remain attached to each covered semester.',
       stock:this.kits.map(k=>{const r=this.kitInventory(k.id);return{code:k.code,name:k.name,status:k.active===false?'Decommissioned':'Active',prepared:this.num(r.prepared),sold:this.num(r.sold),faulty:this.num(r.faulty),reserved:this.num(r.reserved),available:this.num(r.available)};}),
       semesters:this.terms.map(t=>{let revenue=0,cost=0,complete=true;this.kits.forEach(k=>{if(!this.isKitOffered(t.id,k.id))return;const price=this.kitSalePrice(k,t.id),units=this.rawKitSales(k,t.id);if(price===null)complete=false;else revenue+=price*units;cost+=this.kitUnitCost(k,t.id)*units;});return{term:t.label,status:this.status(t.id),classSize:this.num(Object.values(t.cls||{}).reduce((a,b)=>a+(Number(b)||0),0)),units:this.num(this.kits.reduce((a,k)=>a+this.rawKitSales(k,t.id),0)),revenue:complete?this.m(revenue):'—',profit:complete?this.m(revenue-cost):'—',edit:()=>this.setState({scope:'semester',semesterId:t.id,view:'kits',kitId:null})};}),
       add:()=>this.openOrderForm(),
-      form:{style:S.orderForm?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);padding:16px;background:var(--color-surface);margin-bottom:18px':'display:none',id:od.id,date:od.date,vendor:od.vendor,status:od.status,receiptUrl:od.receiptUrl||'',notes:od.notes||'',close:()=>{this.orderDraft=null;this.setState({orderForm:false});},onId:e=>{od.id=e.target.value;this.forceUpdate();},onDate:e=>{od.date=e.target.value;this.forceUpdate();},onVendor:e=>{od.vendor=e.target.value;this.forceUpdate();},onStatus:e=>{od.status=e.target.value;this.forceUpdate();},onReceipt:e=>{od.receiptUrl=e.target.value;this.forceUpdate();},onNotes:e=>{od.notes=e.target.value;this.forceUpdate();},terms:this.terms.filter(t=>this.status(t.id)==='Planning').map(t=>({label:t.label,go:()=>{const i=od.terms.indexOf(t.id);if(i>=0)od.terms.splice(i,1);else od.terms.push(t.id);this.forceUpdate();},style:`border:1px solid ${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-divider)'};background:${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-surface)'};color:${od.terms.includes(t.id)?'var(--color-bg)':'var(--color-text)'};font-size:11px;padding:5px 8px;cursor:pointer`})),lines:od.lines.map((l,i)=>({name:this.orderItemName(l[0]),qty:this.num(l[1]),unit:this.mu(l[2]),remove:()=>{od.lines.splice(i,1);this.forceUpdate();}})),parts:[...this.catalog.map(p=>({id:p.id,name:p.name})),...(this.bagTypes||[]).map(b=>({id:'bag:'+b.id,name:'Packaging · '+b.name}))],linePart:S.orderLinePart,lineQty:S.orderLineQty,lineUnit:S.orderLineUnit,onLinePart:e=>this.setState({orderLinePart:e.target.value}),onLineQty:e=>this.setState({orderLineQty:e.target.value}),onLineUnit:e=>this.setState({orderLineUnit:e.target.value}),addLine:()=>this.addOrderDraftLine(),save:()=>this.saveOrder()},
-      rows:this.orders.map(o=>({id:o.id,date:o.date,vendor:o.vendor,status:o.status||(o.receipt?'received':'ordered'),terms:o.terms.map(t=>(this.termMap[t]||{}).label||t),lines:o.lines.length,total:this.m(ordTotal(o)),receiptUrl:o.receiptUrl||'#',rcpt:o.receiptUrl||o.receipt?'Filed':'Missing',rcptClass:o.receiptUrl||o.receipt?'tag-neutral':'tag-accent',stop:e=>{if(!o.receiptUrl)e.preventDefault();e.stopPropagation();},toggle:()=>this.setState({orderOpen:S.orderOpen===o.id?null:o.id})})),
+      form:{style:S.orderForm?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);padding:16px;background:var(--color-surface);margin-bottom:18px':'display:none',id:od.id,date:od.date,vendor:od.vendor,status:od.status,receiptUrl:od.receiptUrl||'',trackingNumber:od.trackingNumber||'',trackingUrl:od.trackingUrl||'',carrier:od.carrier||'',notes:od.notes||'',close:()=>{this.orderDraft=null;this.setState({orderForm:false});},onId:e=>{od.id=e.target.value;this.forceUpdate();},onDate:e=>{od.date=e.target.value;this.forceUpdate();},onVendor:e=>{od.vendor=e.target.value;this.forceUpdate();},onStatus:e=>{od.status=e.target.value;this.forceUpdate();},onReceipt:e=>{od.receiptUrl=e.target.value;this.forceUpdate();},onCarrier:e=>{od.carrier=e.target.value;this.forceUpdate();},onTrackingNumber:e=>{od.trackingNumber=e.target.value;this.forceUpdate();},onTrackingUrl:e=>{od.trackingUrl=e.target.value;this.forceUpdate();},onNotes:e=>{od.notes=e.target.value;this.forceUpdate();},terms:this.terms.filter(t=>this.status(t.id)==='Planning').map(t=>({label:t.label,go:()=>{const i=od.terms.indexOf(t.id);if(i>=0)od.terms.splice(i,1);else od.terms.push(t.id);this.forceUpdate();},style:`border:1px solid ${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-divider)'};background:${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-surface)'};color:${od.terms.includes(t.id)?'var(--color-bg)':'var(--color-text)'};font-size:11px;padding:5px 8px;cursor:pointer`})),lines:od.lines.map((l,i)=>({name:this.orderItemName(l[0]),vendor:l[3]||od.vendor||'',qty:this.num(l[1]),unit:this.mu(l[2]),onVendor:e=>{l[3]=e.target.value;this.forceUpdate();},remove:()=>{od.lines.splice(i,1);this.forceUpdate();}})),parts:[...this.catalog.map(p=>({id:p.id,name:p.name})),...(this.bagTypes||[]).map(b=>({id:'bag:'+b.id,name:'Packaging · '+b.name}))],linePart:S.orderLinePart,lineQty:S.orderLineQty,lineUnit:S.orderLineUnit,onLinePart:e=>this.setState({orderLinePart:e.target.value}),onLineQty:e=>this.setState({orderLineQty:e.target.value}),onLineUnit:e=>this.setState({orderLineUnit:e.target.value}),addLine:()=>this.addOrderDraftLine(),save:()=>this.saveOrder()},
+      rows:this.orders.map(o=>({id:o.id,date:o.date,vendor:o.vendor,status:o.status||(o.receipt?'received':'ordered'),terms:o.terms.map(t=>(this.termMap[t]||{}).label||t),trackingUrl:o.trackingUrl||'#',trackingLabel:o.trackingNumber?((o.carrier?o.carrier+' · ':'')+o.trackingNumber):'Not entered',trackingStyle:o.trackingUrl?'font-size:11.5px;font-weight:700;color:var(--color-accent-700)':'font-size:11.5px;color:var(--color-neutral-600);pointer-events:none',lines:o.lines.length,total:this.m(ordTotal(o)),receiptUrl:o.receiptUrl||'#',rcpt:o.receiptUrl||o.receipt?'Filed':'Missing',rcptClass:o.receiptUrl||o.receipt?'tag-neutral':'tag-accent',stop:e=>{if(!o.receiptUrl)e.preventDefault();e.stopPropagation();},stopTracking:e=>{if(!o.trackingUrl)e.preventDefault();e.stopPropagation();},toggle:()=>this.setState({orderOpen:S.orderOpen===o.id?null:o.id})})),
       detailStyle:S.orderOpen?'margin-top:24px':'display:none',
       detail:(()=>{ const o=this.orders.find(x=>x.id===S.orderOpen); if(!o) return {id:'',meta:'',lines:[]};
-        return {id:o.id,meta:o.vendor+' · '+o.date+' · '+(o.status||'ordered')+' · covers '+o.terms.map(t=>(this.termMap[t]||{}).label).join(' + ')+' · '+(o.receiptUrl||o.receipt?'receipt on file':'receipt missing')+(o.notes?' · '+o.notes:''),
-          lines:o.lines.map(l=>({name:this.orderItemName(l[0]),qty:this.num(l[1]),unit:this.mu(l[2]),ext:this.m(l[1]*l[2]),open:()=>{if(this.map[l[0]])this.openPart(l[0]);}}))}; })()};
+        return {id:o.id,meta:o.vendor+' · '+o.date+' · '+(o.status||'ordered')+' · covers '+o.terms.map(t=>(this.termMap[t]||{}).label).join(' + ')+' · '+(o.trackingNumber?('tracking '+o.trackingNumber):'tracking missing')+' · '+(o.receiptUrl||o.receipt?'receipt on file':'receipt missing')+(o.notes?' · '+o.notes:''),
+          lines:o.lines.map(l=>({name:this.orderItemName(l[0]),vendor:l[3]||o.vendor||'—',qty:this.num(l[1]),unit:this.mu(l[2]),ext:this.m(l[1]*l[2]),open:()=>{if(this.map[l[0]])this.openPart(l[0]);}}))}; })()};
 
-    const ghdrSub={home:'Everything across all 36 recorded semesters',inventory:'Current loose components and automatically calculated packed kits',accuracy:'Predictions, demand trends, data entry, inventory, and ordering in one workspace',combine:'Merge planning semesters into one bulk purchase',catalog:'Every component, with pricing and where it is used',library:'Reusable versioned kit definitions',build:'Creating a new kit version','kit-history':'Version and sales history',pricing:'API quotes and reusable manual supplier price tables per component',search:'Look up any component',orders:'Purchase orders and filed receipts',history:'Auditable changes with undo'};
-    const ghdr={title:'All semesters',sub:ghdrSub[G]||'',stats:[
+    const ghdrSub={home:'Everything across all 36 recorded semesters',inventory:'Current general items, packed kits, bags, and loose components',accuracy:'Predictions, demand trends, evidence, and data entry in one workspace',combine:'Compare and resolve vendor choices across planning semesters',catalog:'Search components and maintain their vendor links, bulk pricing, stock, shipping, and lead time',library:'Reusable versioned kit definitions and sales history',build:'Create or update a reusable kit definition','kit-history':'Version assignments, selling prices, and sales history',orders:'Purchase orders, tracking, receipts, and paid prices',history:'Auditable changes with undo'};
+    const ghdrTitle={home:'All semesters',inventory:'Current inventory',accuracy:'Forecast & trends',combine:'Combined purchasing',catalog:'Component catalog',library:'Kit library',build:'Kit builder','kit-history':'Kit history',orders:'Orders & receipts',history:'Edit history'};
+    const ghdr={title:ghdrTitle[G]||'LabKit',sub:ghdrSub[G]||'',stats:[
       {val:this.num(lifetime),label:'Units, 12 years',color:'var(--color-text)'},
       {val:mapeLabel,label:'Forecast error',color:'var(--color-text)'},
       {val:this.m(openUnits*CPU).replace('.00',''),label:'Open commitment',color:'var(--color-accent-700)'},
     ]};
-    const gTabDef=[['home','Overview'],['inventory','Inventory'],['accuracy','Forecast & trends'],['combine','Combine'],['catalog','Catalog'],['library','Kits'],['pricing','Pricing'],['search','Search'],['orders','Orders'],['history','History']];
-    if(G==='build') gTabDef.splice(6,0,['build','Builder']);
-    if(G==='kit-history') gTabDef.splice(6,0,['kit-history','Kit history']);
-    const gtabs=gTabDef.map(([id,label])=>({label,go:()=>this.setState({scope:'global',gview:id}),
-      style:`background:transparent;border:0;border-bottom:2px solid ${G===id?'var(--color-accent)':'transparent'};color:${G===id?'var(--color-accent)':'var(--color-neutral-700)'};font-family:var(--font-heading);font-weight:800;font-size:13px;padding:9px 12px;margin-bottom:-2px;cursor:pointer`}));
+    const gtabs=[];
 
     return {
-      semesters,favorites,catalogCount:this.catalog.length,gnav,semGroups,
+      semesters,favorites,catalogCount:this.catalog.length,gnav,semGroups,workspaceNav,workspaceNavTitle,workspaceNavStyle,
       shellClass:S.sidebarOpen?'nav-open':'',
       sidebarExpanded:S.sidebarOpen?'true':'false',
       toggleSidebar:()=>this.setState({sidebarOpen:!S.sidebarOpen}),
@@ -6664,8 +6737,8 @@ class Component extends DCLogic {
         else if(window.confirm('Reset all locally saved changes and restore the demo data?')){source.reset();window.location.reload();}
       },
       hdr:glob?ghdr:hdr,tabs:glob?gtabs:tabs,
-      vKits:!glob&&S.view==='kits',vKit:!glob&&S.view==='kit',vList:!glob&&S.view==='list',vForecast:!glob&&S.view==='forecast',
-      vBuild:glob?G==='build':S.view==='build',vPricing:glob?G==='pricing':S.view==='pricing',vSearch:glob?G==='search':S.view==='search',
+      vKits:!glob&&effectiveView==='kits',vKit:!glob&&effectiveView==='kit',vList:!glob&&effectiveView==='list',vForecast:!glob&&effectiveView==='forecast',
+      vBuild:glob?G==='build':effectiveView==='build',vPricing:false,vSearch:false,
       vHome:glob&&G==='home',vInventory:glob&&G==='inventory',vTrends:glob&&G==='trends',vAccuracy:glob&&G==='accuracy',vCombine:glob&&G==='combine',vCatalog:glob&&G==='catalog',vLibrary:glob&&G==='library',vKitHistory:glob&&G==='kit-history',vOrders:glob&&G==='orders',vHistory:glob&&G==='history',
       home,inventory,trends,acc,comb,cat,lib,kitHistory,historyLog,historyPanel,ord,
       kitsCards,kit,backToKits:()=>this.setState({view:'kits',kitId:null}),

@@ -13,11 +13,14 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.05\.11"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.06\.12"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
-  assert.match(html, /Refresh APIs \+ AI review/);
-  assert.match(html, /Check non-API sources/);
+  assert.match(html, /\+ Add vendor listing/);
+  assert.match(html, /Find and save a product link/);
+  assert.match(html, /Shipping cost/);
+  assert.match(html, /Landed @ 100/);
+  assert.match(html, /Tracking number/);
   assert.match(html, /Try Gemini review/);
   assert.match(html, /How the number is calculated/);
   assert.match(html, /Packaging bags/);
@@ -27,7 +30,8 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /General-item demand drivers/);
   assert.match(html, /Wire spool yield/);
   assert.match(html, /link-only rows never participate/);
-  assert.match(html, /Newark only/);
+  assert.match(html, /Combined purchasing/);
+  assert.doesNotMatch(html, /Refresh APIs \+ AI review/);
   assert.doesNotMatch(html, /<sc-for\b/);
   assert.match(html, /<template data-dc-control="for"/);
 });
@@ -141,6 +145,7 @@ test("the data model initializes and can create a persisted semester", async () 
       id: "mouser:test",
       vendor: "Mouser",
       vendorSku: "TEST",
+      manual: true,
       verified: true,
       unitPrice: 0.01,
       minimumOrderQuantity: 1,
@@ -154,6 +159,16 @@ test("the data model initializes and can create a persisted semester", async () 
     app.supplierQuotes.hct00[0].requirementsPending = false;
     app.supplierQuotes.hct00[0].meetsRequirements = true;
     assert.equal(app.cheapest("hct00", 100).vendor, "Mouser");
+
+    const originalHct04Suppliers = app.supplierQuotes.hct04;
+    app.supplierQuotes.hct04 = [
+      { id: "a", vendor: "Vendor A", manual: true, productUrl: "https://example.com/a", priceBreaks: [{ quantity: 1, unitPrice: 0.05 }], shippingCost: 5, available: 50, leadTime: "2 days", domestic: true, meetsRequirements: true },
+      { id: "b", vendor: "Vendor B", manual: true, productUrl: "https://example.com/b", priceBreaks: [{ quantity: 1, unitPrice: 0.12 }], shippingCost: 2, available: 100, leadTime: "4 days", domestic: true, meetsRequirements: true },
+    ];
+    const splitVendorPlan = app.vendorPlan("hct04", 120);
+    assert.deepEqual(splitVendorPlan.allocations.map((row) => [row.vendor, row.qty]), [["Vendor A", 50], ["Vendor B", 70]]);
+    assert.match(splitVendorPlan.decision, /Stock requires a split/);
+    app.supplierQuotes.hct04 = originalHct04Suppliers;
 
     assert.equal(app.kitInventory("ece2031").prepared, 310);
     assert.equal(app.kitInventory("ece2031").sold, 228);
@@ -191,7 +206,7 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(app.bagNeed("bag-ece2031", ["sp27"]).gross, 10);
     assert.ok(planningView.comb.terms.some((term) => term.label === "Spring 2027"));
     assert.ok(!planningView.comb.terms.some((term) => term.label === "Fall 2026"));
-    planningView.tabs.find((tab) => tab.label === "Build").go();
+    planningView.workspaceNav.find((item) => item.label === "Kit definitions").go();
     assert.equal(app.state.builderTargetTermId, "sp27");
     assert.match(app.renderVals().builder.forecastLabel, /Use forecast/);
 
@@ -700,9 +715,6 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   assert.deepEqual(manifest.urlFetchWhitelist, [
     "https://identitytoolkit.googleapis.com/",
     "https://generativelanguage.googleapis.com/",
-    "https://api.mouser.com/",
-    "https://api.digikey.com/",
-    "https://api.element14.com/",
   ]);
   assert.match(guide, /Deploy → New deployment/);
   assert.match(guide, /seeded `Users\.uid` cell is intentionally blank/);

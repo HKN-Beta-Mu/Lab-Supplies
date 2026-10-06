@@ -13,9 +13,6 @@
   ],
   "urlFetchWhitelist": [
     "https://identitytoolkit.googleapis.com/",
-    "https://generativelanguage.googleapis.com/",
-    "https://api.mouser.com/",
-    "https://api.digikey.com/",
-    "https://api.element14.com/"
+    "https://generativelanguage.googleapis.com/"
   ]
 }
