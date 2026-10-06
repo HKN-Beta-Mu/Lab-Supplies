@@ -488,7 +488,7 @@
     if (node.nodeType !== Node.ELEMENT_NODE) return null;
     const el = node;
     const tag = el.tagName.toLowerCase();
-    if (tag === "sc-for") return walkFor(el, host);
+    if (tag === "sc-for" || tag === "template" && el.getAttribute("data-dc-control") === "for") return walkFor(el, host);
     if (tag === "sc-if") return walkIf(el, host);
     if (tag === "x-import") return walkXImport(el, host);
     if (tag === "sc-helmet") return host.helmet(el);
@@ -548,7 +548,7 @@
     const listGet = compileAttr(el.getAttribute("list") || "");
     const asName = el.getAttribute("as") || "item";
     const hintN = parseInt(el.getAttribute("hint-placeholder-count") || "0", 10);
-    const kids = walkChildren(el, host);
+    const kids = walkChildren(el.content || el, host);
     const listSrc = el.getAttribute("list") || "";
     return (vals, ctx, key) => {
       let list = listGet(vals);

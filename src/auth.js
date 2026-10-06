@@ -39,9 +39,11 @@ const sessionUser = document.querySelector("#labkit-session-user");
 const sessionSignOutButton = document.querySelector("#labkit-session-sign-out");
 const watchBanner = document.querySelector("#labkit-watch-banner");
 const watchMessage = document.querySelector("#labkit-watch-message");
+const takeOverButton = document.querySelector("#labkit-take-over");
 
 let mode = "signin";
 let workspaceUser = null;
+let forcedSignOutStarted = false;
 const accountEmail = labKitAuthConfig.accountEmail;
 emailInput.value = accountEmail;
 
@@ -66,12 +68,21 @@ function setBodyState(state) {
 }
 
 function renderAccess(access = window.LabKitDataSource?.access) {
+  if (access?.forcedSignOut && !forcedSignOutStarted) {
+    forcedSignOutStarted = true;
+    watchBanner.hidden = false;
+    watchMessage.textContent = "Another session took over editing. Signing this session out…";
+    takeOverButton.hidden = true;
+    window.setTimeout(signOutCurrentUser, 500);
+    return;
+  }
   const watching = access?.canEdit === false;
   watchBanner.hidden = !watching || !body.classList.contains("auth-signed-in");
   if (watching) {
     const editor = access?.editor?.label || "Another browser";
     watchMessage.textContent = `${editor} currently has edit access. You can watch live; editing unlocks automatically after that session signs out or disconnects.`;
   }
+  takeOverButton.hidden = !watching;
   if (workspaceUser) {
     const accountLabel = workspaceUser.displayName || workspaceUser.email || "Signed in";
     sessionUser.textContent = watching
@@ -307,6 +318,19 @@ verifiedButton.addEventListener("click", async () => {
 verificationSignOutButton.addEventListener("click", signOutCurrentUser);
 accessSignOutButton.addEventListener("click", signOutCurrentUser);
 sessionSignOutButton.addEventListener("click", signOutCurrentUser);
+takeOverButton.addEventListener("click", async () => {
+  if (!window.confirm("Take over editing? The other LabKit session will be signed out.")) return;
+  takeOverButton.disabled = true;
+  takeOverButton.textContent = "Taking over…";
+  try {
+    await window.LabKitDataSource?.takeOver?.();
+  } catch (error) {
+    watchMessage.textContent = error?.message || "Could not take over editing.";
+  } finally {
+    takeOverButton.disabled = false;
+    takeOverButton.textContent = "Take over & sign out editor";
+  }
+});
 window.addEventListener("labkit:access-changed", (event) => {
   renderAccess(event.detail?.access);
 });

@@ -211,14 +211,28 @@
       const wasEditor = remote.access?.canEdit === true;
       updateAccess(result.access);
       if (result.state?.snapshot) {
-        remote.version = Number(result.state.version || 0);
-        remote.currentData = clone(result.state.snapshot);
-        remote.lastSavedSerialized = JSON.stringify(sharedSnapshot(remote.currentData));
-        emit("labkit:data-loaded", {
-          data: clone(remote.currentData),
-          version: remote.version,
-          user: remote.backendUser,
-        });
+        const incomingVersion = Number(result.state.version || 0);
+        if (remote.pending || remote.inFlight) {
+          // A focus/session poll can return the old server snapshot while a
+          // local edit is waiting for its debounced save. Applying it here
+          // would visibly resurrect deleted semesters or discard new rows.
+          if (incomingVersion > remote.version) {
+            setRemoteStatus("Newer shared data exists — finish or reload", "conflict");
+            emit("labkit:data-conflict", {
+              message: "Newer shared data arrived while this session had unsaved changes.",
+              currentVersion: incomingVersion,
+            });
+          }
+        } else {
+          remote.version = incomingVersion;
+          remote.currentData = clone(result.state.snapshot);
+          remote.lastSavedSerialized = JSON.stringify(sharedSnapshot(remote.currentData));
+          emit("labkit:data-loaded", {
+            data: clone(remote.currentData),
+            version: remote.version,
+            user: remote.backendUser,
+          });
+        }
       } else {
         remote.version = Number(result.version || remote.version);
         if (!wasEditor && remote.access.canEdit) {
@@ -436,6 +450,23 @@
     });
   }
 
+  async function takeOverRemote() {
+    if (!isAppsScript || !remote.ready || !remote.authUser) {
+      throw new Error("The shared LabKit backend is not connected.");
+    }
+    const idToken = await remote.authUser.getIdToken();
+    const result = await callAppsScript({
+      action: "takeOverSession",
+      idToken,
+      sessionId: browserSessionId,
+      sessionLabel: browserSessionLabel,
+    });
+    updateAccess(result.access);
+    setRemoteStatus("Editing · took over this session", "ready");
+    if (remote.pending) scheduleRemoteSave(0);
+    return clone(remote.access);
+  }
+
   if (isAppsScript && typeof global.addEventListener === "function") {
     global.addEventListener("focus", () => {
       if (!remote.ready || remote.syncInFlight) return;
@@ -521,6 +552,8 @@
     refreshSupplierQuotes(payload) {
       return runEditorAction("refreshSupplierQuotes", payload);
     },
+
+    takeOver: takeOverRemote,
 
     connect: connectRemote,
     disconnect: disconnectRemote,

@@ -174,6 +174,9 @@ function apiRequest(request) {
         return apiSuccess_(syncSession_(user, input));
       case "releaseSession":
         return apiSuccess_(releaseEditorLease_(input));
+      case "takeOverSession":
+        requireRole_(user, ["admin"]);
+        return apiSuccess_(takeOverEditorLease_(user, input));
       case "saveSnapshot":
         requireRole_(user, ["admin"]);
         return apiSuccess_(saveSnapshot_(user, input));
@@ -969,6 +972,33 @@ function releaseEditorLease_(input) {
   }
 }
 
+function takeOverEditorLease_(user, input) {
+  const sessionId = requireSessionId_(input.sessionId);
+  const label = optionalSessionLabel_(input.sessionLabel);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const now = Date.now();
+    const current = readEditorLease_();
+    const lease = {
+      sessionId: sessionId,
+      label: label,
+      email: user.email,
+      acquiredAt: new Date(now).toISOString(),
+      lastSeenAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + LABKIT_CONFIG.editorLeaseMilliseconds).toISOString(),
+      displacedSessionId: current && current.sessionId !== sessionId
+        ? current.sessionId
+        : "",
+      takeoverAt: new Date(now).toISOString(),
+    };
+    writeEditorLease_(lease);
+    return { access: publicEditorAccess_(lease, sessionId, now) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function readEditorLease_() {
   const text = PropertiesService.getScriptProperties().getProperty(
     LABKIT_CONFIG.editorLeaseProperty
@@ -1000,6 +1030,12 @@ function publicEditorAccess_(lease, requestingSessionId, now) {
   return {
     mode: canEdit ? "editor" : "viewer",
     canEdit: canEdit,
+    forcedSignOut: Boolean(
+      active
+      && !canEdit
+      && lease.displacedSessionId
+      && lease.displacedSessionId === requestingSessionId
+    ),
     editor: active ? {
       label: String(lease.label || "Another browser"),
       acquiredAt: String(lease.acquiredAt || ""),

@@ -13,11 +13,13 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.05\.1"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.05\.2"/);
   assert.match(html, /vInventory/);
   assert.match(html, /Refresh verified quotes/);
   assert.match(html, /Check non-API sources/);
   assert.match(html, /Newark only/);
+  assert.doesNotMatch(html, /<sc-for\b/);
+  assert.match(html, /<template data-dc-control="for"/);
 });
 
 test("GitHub workflow builds and updates the existing Apps Script deployment", async () => {
@@ -365,6 +367,8 @@ test("Firebase browser configuration initializes through the module bridge", asy
   assert.match(auth, /onAuthStateChanged/);
   assert.match(auth, /getIdTokenResult\(user, true\)/);
   assert.match(auth, /window\.LabKitAuth/);
+  assert.match(auth, /LabKitDataSource\?\.takeOver/);
+  assert.match(auth, /forcedSignOut/);
   assert.match(auth, /signOut/);
   assert.match(config, /projectId: "lab-supplies-67dae"/);
   assert.match(config, /accountEmail: "HKNLabSuppliesGatech@gmail\.com"/);
@@ -565,7 +569,7 @@ test("Apps Script editor lease grants one writer and promotes a viewer after rel
   const leaseApi = new Function(
     "PropertiesService",
     "LockService",
-    `${source}\nreturn { touchEditorLease_, releaseEditorLease_ };`,
+    `${source}\nreturn { touchEditorLease_, releaseEditorLease_, takeOverEditorLease_ };`,
   )(PropertiesService, LockService);
   const user = { email: "hknlabsuppliesgatech@gmail.com" };
   const first = {
@@ -582,8 +586,13 @@ test("Apps Script editor lease grants one writer and promotes a viewer after rel
   assert.equal(editor.canEdit, true);
   assert.equal(viewer.canEdit, false);
   assert.equal(viewer.editor.label, "Safari on macOS");
-  assert.equal(leaseApi.releaseEditorLease_(first).released, true);
-  assert.equal(leaseApi.touchEditorLease_(user, second).canEdit, true);
+  const takeover = leaseApi.takeOverEditorLease_(user, second);
+  assert.equal(takeover.access.canEdit, true);
+  const displaced = leaseApi.touchEditorLease_(user, first);
+  assert.equal(displaced.canEdit, false);
+  assert.equal(displaced.forcedSignOut, true);
+  assert.equal(leaseApi.releaseEditorLease_(first).released, false);
+  assert.equal(leaseApi.releaseEditorLease_(second).released, true);
 });
 
 test("Apps Script frontend is a self-contained generated artifact", async () => {

@@ -28,10 +28,10 @@ body.auth-signed-in .labkit-auth-gate {
   display: none;
 }
 
-body.labkit-read-only x-dc button,
-body.labkit-read-only x-dc input,
-body.labkit-read-only x-dc select,
-body.labkit-read-only x-dc textarea {
+body.labkit-read-only #dc-root button,
+body.labkit-read-only #dc-root input,
+body.labkit-read-only #dc-root select,
+body.labkit-read-only #dc-root textarea {
   pointer-events: none !important;
   opacity: 0.58;
 }
@@ -60,6 +60,17 @@ body.labkit-read-only x-dc textarea {
   color: #a3220e;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.labkit-watch-banner button {
+  flex: none;
+  margin-left: auto;
+  border: 1px solid #181713;
+  background: #fffdf8;
+  color: #181713;
+  padding: 6px 9px;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 .labkit-auth-card {
