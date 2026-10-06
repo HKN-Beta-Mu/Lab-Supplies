@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.05\.4"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.05\.5"/);
   assert.match(html, /vInventory/);
   assert.match(html, /Refresh APIs \+ AI review/);
   assert.match(html, /Check non-API sources/);
@@ -174,8 +174,17 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(app.state.semesterId, "sp27");
     assert.equal(app.state.view, "build");
     assert.doesNotThrow(() => app.renderVals());
+    const assignedPriceVersion = app.versionFor("ece2031", "sp27");
+    const versionCount = app.kitVersions.length;
     app.updateTermKitPrice("sp27", "ece2031", "20");
-    assert.equal(app.termMap.sp27.salePrices.ece2031, 20);
+    assert.equal(assignedPriceVersion.salePrice, 20);
+    assert.equal(app.termMap.sp27.salePrices.ece2031, undefined);
+    assert.equal(app.kitVersions.length, versionCount);
+    const pricingView = app.renderVals();
+    assert.equal(pricingView.kitsCards.find((kit) => kit.code === "ECE 2031").salePrice, 20);
+    assert.equal(pricingView.priceTest.rows.find((row) => row.code === "ECE 2031").saved, "$20.00");
+    pricingView.priceTest.rows.find((row) => row.code === "ECE 2031").onTest({ target: { value: "25" } });
+    assert.equal(app.state.priceTestValues["sp27:ece2031"], "25");
     app.toggleTermKitOffering("sp27", "ece3043");
     assert.equal(app.termMap.sp27.kitOfferings.ece3043, false);
     assert.equal(app.sales(app.kitMap.ece3043, "sp27").sold, 0);
@@ -198,6 +207,8 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.ok(lastSaved.lineupVersions.length >= 1);
     assert.equal(lastSaved.inventory.packedKits.ece2031.prepared, 238);
     assert.equal(lastSaved.supplierReferenceDataVersion, "2026-10-05-v1");
+    assert.equal(lastSaved.state.priceTestValues, undefined);
+    assert.equal(lastSaved.state.priceTestOpen, undefined);
   } finally {
     delete globalThis.window;
   }
@@ -562,6 +573,8 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   assert.match(source, /SemesterKitVersions/);
   assert.match(source, /kit_offerings_json/);
   assert.match(source, /sale_prices_json/);
+  assert.match(source, /"sale_price"/);
+  assert.match(source, /assignedVersion\.salePrice/);
   assert.match(source, /ChangeHistory/);
   assert.match(source, /function suggestSemester_/);
   assert.match(source, /function refreshSupplierQuotes_/);

@@ -44,7 +44,7 @@ const LABKIT_SCHEMAS = Object.freeze({
   ]),
   KitVersions: Object.freeze([
     "id", "kit_id", "version_number", "label", "effective_from", "effective_to",
-    "items_json", "source", "created_at", "updated_at", "version",
+    "items_json", "source", "created_at", "updated_at", "version", "sale_price",
   ]),
   KitLineupVersions: Object.freeze([
     "id", "version_number", "label", "kit_ids_json", "source", "created_at",
@@ -1520,6 +1520,9 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         created_at: item.createdAt,
         updated_at: now,
         version: version,
+        sale_price: item.salePrice === null || item.salePrice === undefined
+          ? ""
+          : numberOrZero_(item.salePrice),
       };
     }));
 
@@ -1592,6 +1595,8 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
       };
     }));
 
+  const kitVersionById = {};
+  kitVersions.forEach(function (item) { kitVersionById[item.id] = item; });
   const semesterKitRows = [];
   terms.forEach(function (term) {
     kits.filter(function (kit) { return !kit.individual; }).forEach(function (kit) {
@@ -1607,9 +1612,18 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         ? numberOrZero_(term.inventoryAllocation.packedKits[kit.id])
         : 0;
       const offered = !isPlainObject_(term.kitOfferings) || term.kitOfferings[kit.id] !== false;
-      const salePrice = isPlainObject_(term.salePrices) && term.salePrices[kit.id] !== undefined
-        ? Number(term.salePrices[kit.id])
-        : "";
+      const assignedVersionId = isPlainObject_(term.kitVersions) ? term.kitVersions[kit.id] : "";
+      const assignedVersion = kitVersionById[assignedVersionId];
+      const recordedPrice = isPlainObject_(term.salePrices) && term.salePrices[kit.id] !== undefined
+        ? term.salePrices[kit.id]
+        : undefined;
+      const versionPrice = assignedVersion && assignedVersion.salePrice !== undefined
+        ? assignedVersion.salePrice
+        : undefined;
+      const priceValue = recordedPrice !== undefined ? recordedPrice : versionPrice;
+      const salePrice = priceValue === undefined || priceValue === null || priceValue === ""
+        ? ""
+        : Number(priceValue);
       const units = term.actualPending === true ? planned : sold;
       semesterKitRows.push({
         id: String(term.id) + ":" + String(kit.id),
