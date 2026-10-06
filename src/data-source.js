@@ -215,6 +215,7 @@
     lastSavedSerialized: "",
     saveTimer: null,
     inFlight: false,
+    inFlightSnapshot: null,
     inFlightSerialized: "",
     savePromise: null,
     retryCount: 0,
@@ -371,7 +372,11 @@
         const incomingVersion = Number(result.state.version || 0);
         if (remote.pending || remote.inFlight) {
           if (incomingVersion > remote.version) {
-            const local = remote.pending || remote.currentData;
+            // A session refresh can finish while a save is still waiting on
+            // Apps Script. Merge against that in-flight edit as well as any
+            // newer queued edit so the UI can never jump back to the last
+            // saved value.
+            const local = remote.pending || remote.inFlightSnapshot || remote.currentData;
             const server = clone(result.state.snapshot);
             const merged = mergeSnapshots(remote.baseData || remote.currentData || {}, local, server);
             remote.version = incomingVersion;
@@ -448,7 +453,12 @@
 
     const server = result.state?.snapshot ? clone(result.state.snapshot) : remote.baseData;
     const incomingVersion = Number(result.state?.version ?? result.version ?? remote.version);
-    if (!server || incomingVersion <= remote.version) return false;
+    // A periodic session sync may already have adopted and merged exactly the
+    // version that caused this conflict. In that case there is nothing else to
+    // fetch; the queued merged snapshot can be retried at the current version.
+    if (!server || incomingVersion <= remote.version) {
+      return Boolean(remote.pending && remote.baseData);
+    }
 
     const local = remote.pending || snapshot;
     const merged = mergeSnapshots(remote.baseData || {}, local, server);
@@ -489,11 +499,13 @@
     }
 
     remote.inFlight = true;
+    remote.inFlightSnapshot = clone(snapshot);
     remote.inFlightSerialized = serialized;
     setRemoteStatus("Saving to shared sheet…", "saving");
     remote.savePromise = (async () => {
       try {
         const idToken = await remote.authUser.getIdToken();
+        const expectedVersion = remote.version;
         const result = await callAppsScript({
           action: "saveSnapshot",
           idToken,
@@ -502,17 +514,25 @@
           requestId: requestId(),
           payload: {
             snapshot,
-            expectedVersion: remote.version,
+            expectedVersion,
           },
         });
-        remote.version = Number(result.version || remote.version);
-        remote.baseData = clone(snapshot);
+        const resultVersion = Number(result.version || expectedVersion);
+        const versionBeforeResult = remote.version;
+        const versionChangedWhileSaving = versionBeforeResult !== expectedVersion;
+        // If session sync already advanced the client, it also supplied the
+        // authoritative base snapshot. Do not replace that newer merge base
+        // with the older in-flight request.
+        if (!versionChangedWhileSaving || resultVersion > versionBeforeResult) {
+          remote.baseData = clone(snapshot);
+        }
+        remote.version = Math.max(versionBeforeResult, resultVersion);
         remote.currentData = remote.pending ? clone(remote.pending) : clone(snapshot);
         remote.lastSavedSerialized = serialized;
         remote.retryCount = 0;
         if (remote.pending) writeRemoteDraft(remote.pending);
         else clearRemoteDraft();
-        setRemoteStatus("Saved to shared sheet", "saved");
+        setRemoteStatus(remote.pending ? "Saving newer changes…" : "Saved to shared sheet", remote.pending ? "saving" : "saved");
         return true;
       } catch (error) {
         if (error.code === "EDITOR_LOCKED") {
@@ -556,6 +576,7 @@
         return false;
       } finally {
         remote.inFlight = false;
+        remote.inFlightSnapshot = null;
         remote.inFlightSerialized = "";
         remote.savePromise = null;
         if (remote.pending && !remote.saveTimer && remote.retryCount <= MAX_AUTOMATIC_RETRIES) {
@@ -683,6 +704,7 @@
     remote.pendingSerialized = "";
     remote.lastSavedSerialized = "";
     remote.inFlight = false;
+    remote.inFlightSnapshot = null;
     remote.inFlightSerialized = "";
     remote.savePromise = null;
     remote.syncTimer = null;
@@ -834,6 +856,7 @@
 
       remote.pending = snapshot;
       remote.pendingSerialized = serialized;
+      remote.currentData = clone(snapshot);
       remote.retryCount = 0;
       writeRemoteDraft(snapshot);
       if (remote.ready) scheduleRemoteSave();

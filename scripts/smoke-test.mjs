@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.05\.10"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.05\.11"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /Refresh APIs \+ AI review/);
@@ -534,7 +534,10 @@ test("Apps Script data adapter rebases and retries without discarding an edit", 
             version: 4,
           } });
         } else if (request.action === "saveSnapshot") {
-          successHandler({ ok: true, data: { version: 5, duplicate: false } });
+          successHandler({ ok: true, data: {
+            version: request.payload.expectedVersion + 1,
+            duplicate: false,
+          } });
         } else {
           failureHandler(new Error(`Unexpected action: ${request.action}`));
         }
@@ -585,8 +588,23 @@ test("Apps Script data adapter rebases and retries without discarding an edit", 
   assert.equal(saves[1].payload.snapshot.orders[0].id, "PO-remote");
   assert.equal(saves[1].payload.snapshot.supplierReferenceDataVersion, "reference-v1");
   assert.equal(browser.LabKitDataSource.version, 5);
+  assert.equal(browser.LabKitDataSource.canEdit, true);
   assert.equal(browser.LabKitDataSource.hasUnsavedChanges, false);
   assert.equal(storage.has("labkit.unsaved-remote-draft"), false);
+
+  browser.LabKitDataSource.save({
+    ...browser.LabKitDataSource.load(),
+    terms: [{ id: "sp27", sales: { ece2031: 240 } }],
+  });
+  await scheduled.at(-1)();
+  await new Promise((resolve) => setImmediate(resolve));
+  const savesAfterMerge = requests.filter((request) => request.action === "saveSnapshot");
+  assert.equal(savesAfterMerge.length, 3);
+  assert.equal(savesAfterMerge[2].payload.expectedVersion, 5);
+  assert.equal(savesAfterMerge[2].payload.snapshot.terms[0].sales.ece2031, 240);
+  assert.equal(browser.LabKitDataSource.version, 6);
+  assert.equal(browser.LabKitDataSource.canEdit, true);
+  assert.equal(browser.LabKitDataSource.hasUnsavedChanges, false);
 });
 
 test("Firebase browser configuration initializes through the module bridge", async () => {

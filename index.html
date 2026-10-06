@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-<meta name="labkit-build" content="2026.10.05.10">
+<meta name="labkit-build" content="2026.10.05.11">
 <title>LabKit · Component Procurement</title>
 <link rel="stylesheet" href="./src/auth.css">
 <script type="module" src="./src/firebase.js"></script>
@@ -65,7 +65,7 @@
 
 <aside id="labkit-auth-session" class="labkit-auth-session" aria-label="Signed-in account" hidden>
   <span id="labkit-session-user"></span>
-  <span class="labkit-build-id">v2026.10.05.10</span>
+  <span class="labkit-build-id">v2026.10.05.11</span>
   <button id="labkit-session-sign-out" type="button">Sign out</button>
 </aside>
 
@@ -1362,7 +1362,7 @@ class Component extends DCLogic {
   }
 
   onDataStatus(){ this.forceUpdate(); }
-  onDataConflict(event){ this.flash(event.detail&&event.detail.message||'Your changes were reconciled with the newer saved version.'); }
+  onDataConflict(event){ this.flash(event.detail&&event.detail.message||'The newer saved version was merged. You can keep editing while the combined changes save.'); }
 
   persistData(){
     if(!window.LabKitDataSource)return;
