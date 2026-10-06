@@ -372,12 +372,27 @@
         const incomingVersion = Number(result.state.version || 0);
         if (remote.pending || remote.inFlight) {
           if (incomingVersion > remote.version) {
+            const server = clone(result.state.snapshot);
+            const serverSerialized = JSON.stringify(sharedSnapshot(server));
+            // Apps Script may commit our save before the original save request
+            // returns. A session poll can therefore observe that exact snapshot
+            // first. Treat it as an acknowledgement of our own write, not as an
+            // external edit that needs another merge and another warning.
+            if (remote.inFlight && serverSerialized === remote.inFlightSerialized) {
+              remote.version = incomingVersion;
+              remote.baseData = server;
+              remote.lastSavedSerialized = serverSerialized;
+              remote.currentData = remote.pending ? clone(remote.pending) : server;
+              if (remote.pending) writeRemoteDraft(remote.pending);
+              else clearRemoteDraft();
+              setRemoteStatus(remote.pending ? "Saving newer changes…" : "Saved to shared sheet", remote.pending ? "saving" : "saved");
+              return;
+            }
             // A session refresh can finish while a save is still waiting on
             // Apps Script. Merge against that in-flight edit as well as any
             // newer queued edit so the UI can never jump back to the last
             // saved value.
             const local = remote.pending || remote.inFlightSnapshot || remote.currentData;
-            const server = clone(result.state.snapshot);
             const merged = mergeSnapshots(remote.baseData || remote.currentData || {}, local, server);
             remote.version = incomingVersion;
             remote.baseData = server;

@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.06\.12"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.06\.13"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -206,6 +206,13 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(app.bagNeed("bag-ece2031", ["sp27"]).gross, 10);
     assert.ok(planningView.comb.terms.some((term) => term.label === "Spring 2027"));
     assert.ok(!planningView.comb.terms.some((term) => term.label === "Fall 2026"));
+    app.openPart("hct00");
+    app.setState({ modalTab: "vendors" });
+    const vendorModal = app.renderVals().modal;
+    assert.match(vendorModal.selectionNote, /saved only to that semester plan/);
+    vendorModal.vendors.find((vendor) => vendor.vendor === "Mouser").select({ preventDefault() {} });
+    assert.equal(app.state.lineVendor["sp27:hct00"], "Mouser");
+    app.setState({ partId: null });
     planningView.workspaceNav.find((item) => item.label === "Kit definitions").go();
     assert.equal(app.state.builderTargetTermId, "sp27");
     assert.match(app.renderVals().builder.forecastLabel, /Use forecast/);
@@ -620,6 +627,83 @@ test("Apps Script data adapter rebases and retries without discarding an edit", 
   assert.equal(browser.LabKitDataSource.version, 6);
   assert.equal(browser.LabKitDataSource.canEdit, true);
   assert.equal(browser.LabKitDataSource.hasUnsavedChanges, false);
+});
+
+test("session polling recognizes the editor's own in-flight save", async () => {
+  const source = await read("src/data-source.js");
+  const scheduled = [];
+  const storage = new Map();
+  let currentSuccess;
+  let currentFailure;
+  let pendingSaveSuccess;
+  let savedSnapshot;
+  const conflicts = [];
+  const baseSnapshot = {
+    state: { overrides: {}, statusOv: {}, vendorPolicy: "best", lineVendor: {} },
+    catalog: [], kits: [], kitVersions: [], lineupVersions: [], changeLog: [], orders: [], terms: [],
+    inventory: { components: {}, packedKits: {} }, supplierQuotes: {}, alternatives: {},
+  };
+  const runner = {
+    withSuccessHandler(handler) { currentSuccess = handler; return this; },
+    withFailureHandler(handler) { currentFailure = handler; return this; },
+    apiRequest(request) {
+      const success = currentSuccess;
+      const failure = currentFailure;
+      if (request.action === "bootstrap") {
+        queueMicrotask(() => success({ ok: true, data: {
+          user: { uid: "firebase-1", email: "admin@example.com", role: "admin" },
+          state: { version: 1, snapshot: baseSnapshot },
+          access: { mode: "editor", canEdit: true, editor: { label: "Test browser" } },
+        } }));
+      } else if (request.action === "saveSnapshot") {
+        savedSnapshot = request.payload.snapshot;
+        pendingSaveSuccess = success;
+      } else if (request.action === "syncSession") {
+        queueMicrotask(() => success({ ok: true, data: {
+          access: { mode: "editor", canEdit: true, editor: { label: "Test browser" } },
+          state: { version: 2, snapshot: savedSnapshot },
+          version: 2,
+        } }));
+      } else {
+        failure(new Error(`Unexpected action: ${request.action}`));
+      }
+    },
+  };
+  const listeners = new Map();
+  const browser = {
+    __LABKIT_APPS_SCRIPT__: true,
+    google: { script: { run: runner } },
+    crypto: { randomUUID: () => "own-save-request" },
+    location: { reload() {} },
+    localStorage: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: (key) => storage.delete(key),
+    },
+    setTimeout(callback) { scheduled.push(callback); return scheduled.length; },
+    clearTimeout() {},
+    addEventListener(name, handler) { listeners.set(name, handler); },
+    dispatchEvent(event) { listeners.get(event.type)?.(event); },
+  };
+  class EventStub {
+    constructor(type, options) { this.type = type; this.detail = options?.detail; }
+  }
+
+  new Function("window", "CustomEvent", source)(browser, EventStub);
+  browser.addEventListener("labkit:data-conflict", (event) => conflicts.push(event.detail));
+  await browser.LabKitDataSource.connect({ uid: "firebase-1", getIdToken: async () => "firebase-token" });
+  browser.LabKitDataSource.save({ ...baseSnapshot, orders: [{ id: "PO-local", vendor: "Jameco", lines: [] }] });
+  const savePromise = scheduled[1]();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(pendingSaveSuccess);
+  await scheduled[0]();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(conflicts.length, 0);
+  pendingSaveSuccess({ ok: true, data: { version: 2, duplicate: false } });
+  await savePromise;
+  assert.equal(browser.LabKitDataSource.version, 2);
+  assert.equal(browser.LabKitDataSource.hasUnsavedChanges, false);
+  assert.equal(storage.has("labkit.unsaved-remote-draft"), false);
 });
 
 test("Firebase browser configuration initializes through the module bridge", async () => {

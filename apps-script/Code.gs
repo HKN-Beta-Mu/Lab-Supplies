@@ -1755,7 +1755,7 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
             created_by: email,
             version: version,
             product_url: quote.productUrl || "",
-            shipping_cost: numberOrZero_(quote.shippingCost),
+            shipping_cost: quote.shippingCost === null || quote.shippingCost === undefined || quote.shippingCost === "" ? "" : numberOrZero_(quote.shippingCost),
             lead_time: quote.leadTime || "",
             stock_available: quote.available === null || quote.available === undefined ? "" : numberOrZero_(quote.available),
             notes: quote.notes || "",
