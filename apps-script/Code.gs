@@ -94,10 +94,12 @@ const LABKIT_SCHEMAS = Object.freeze({
   OrderLines: Object.freeze([
     "id", "order_id", "component_id", "quantity", "unit_price",
     "vendor", "semester_ids_json", "updated_at", "version",
+    "requirement_component_id", "product_url",
   ]),
   Alternatives: Object.freeze([
     "id", "component_id", "part_number", "manufacturer", "package", "match",
     "match_label", "note", "unit_price_label", "vendor", "created_at", "version",
+    "catalog_component_id",
   ]),
   Users: Object.freeze([
     "uid", "email", "display_name", "role", "active", "created_at", "last_seen_at",
@@ -1422,7 +1424,7 @@ function validateSnapshot_(value) {
 
 function syncSnapshotToTables_(snapshot, version, now, email) {
   const spreadsheet = getSpreadsheet_();
-  ["KitVersions", "KitLineupVersions", "Semesters", "SemesterKits", "BagInventory"].forEach(function (name) {
+  ["KitVersions", "KitLineupVersions", "Semesters", "SemesterKits", "BagInventory", "OrderLines", "Alternatives"].forEach(function (name) {
     ensureSheet_(spreadsheet, name, LABKIT_SCHEMAS[name]);
   });
   const catalog = snapshot.catalog;
@@ -1799,6 +1801,8 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         semester_ids_json: jsonCell_(arrayOrEmpty_(order.terms)),
         updated_at: now,
         version: version,
+        requirement_component_id: line[4] || "",
+        product_url: line[5] || "",
       });
     });
   });
@@ -1837,6 +1841,7 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         vendor: alternative.vendor,
         created_at: now,
         version: version,
+        catalog_component_id: alternative.componentId || "",
       });
     });
   });

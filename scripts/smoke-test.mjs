@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.06\.13"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.06\.14"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -29,7 +29,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /Enrolled students/);
   assert.match(html, /General-item demand drivers/);
   assert.match(html, /Wire spool yield/);
-  assert.match(html, /link-only rows never participate/);
+  assert.match(html, /saved product link without pricing remains a manual reference/);
   assert.match(html, /Combined purchasing/);
   assert.doesNotMatch(html, /Refresh APIs \+ AI review/);
   assert.doesNotMatch(html, /<sc-for\b/);
@@ -213,6 +213,42 @@ test("the data model initializes and can create a persisted semester", async () 
     vendorModal.vendors.find((vendor) => vendor.vendor === "Mouser").select({ preventDefault() {} });
     assert.equal(app.state.lineVendor["sp27:hct00"], "Mouser");
     app.setState({ partId: null });
+    const approvedAlternative = app.saveApprovedAlternative("hct20", {
+      pn: "CD74HCT20E",
+      mfr: "Texas Instruments",
+      pkg: "PDIP-14",
+      note: "Officer verified as a compatible substitute.",
+    });
+    assert.equal(approvedAlternative.alternativeFor, "hct20");
+    app.supplierQuotes[approvedAlternative.id] = [{
+      id: "digikey-alt",
+      vendor: "DigiKey",
+      vendorSku: "CD74HCT20E-ND",
+      productUrl: "https://example.com/cd74hct20e",
+      manual: true,
+      priceBreaks: [{ quantity: 1, unitPrice: 0.5 }],
+      shippingCost: 4,
+      available: 1000,
+      leadTime: "2 days",
+      domestic: true,
+      meetsRequirements: true,
+    }];
+    app.setSubstituteChoice("sp27:hct20", "hct20", approvedAlternative.id);
+    const substituteRow = app.renderVals().list.rows.find((row) => row.name === "74HCT20");
+    assert.equal(substituteRow.sourceSel, approvedAlternative.id);
+    assert.match(substituteRow.sourceNote, /approved alternative/i);
+    assert.equal(substituteRow.url, "https://example.com/cd74hct20e");
+    const wireOrderRow = app.renderVals().list.rows.find((row) => row.name === "Red Hookup Wire");
+    assert.match(wireOrderRow.needed, /cuts \(\d+ spools?\)/);
+    app.renderVals().list.onCategory({ target: { value: "Wire" } });
+    assert.ok(app.renderVals().list.rows.every((row) => row.cat === "Wire"));
+    app.setState({ procurementCategory: "All" });
+    app.createCombinedOrder(["sp27"]);
+    const substituteOrderLine = app.orderDraft.lines.find((line) => line[4] === "hct20");
+    assert.equal(substituteOrderLine[0], approvedAlternative.id);
+    assert.equal(substituteOrderLine[5], "https://example.com/cd74hct20e");
+    app.orderDraft = null;
+    app.setState({ scope: "semester", semesterId: "sp27", view: "kits", gview: "home", orderForm: false });
     planningView.workspaceNav.find((item) => item.label === "Kit definitions").go();
     assert.equal(app.state.builderTargetTermId, "sp27");
     assert.match(app.renderVals().builder.forecastLabel, /Use forecast/);
@@ -304,7 +340,7 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.ok(lastSaved.lineupVersions.length >= 1);
     assert.equal(lastSaved.inventory.packedKits.ece2031.prepared, 238);
     assert.equal(lastSaved.supplierReferenceDataVersion, "2026-10-05-v1");
-    assert.equal(lastSaved.dataSchemaVersion, "2026-10-06-v3");
+    assert.equal(lastSaved.dataSchemaVersion, "2026-10-06-v4");
     assert.equal(lastSaved.bagTypes.length, 4);
     assert.equal(lastSaved.state.priceTestValues, undefined);
     assert.equal(lastSaved.state.priceTestOpen, undefined);
@@ -505,6 +541,7 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
     statusOv: {},
     vendorPolicy: "best",
     lineVendor: {},
+    lineSubstitute: {},
   });
   assert.deepEqual(requests[1].payload.snapshot.inventory, {
     components: {},
@@ -643,6 +680,14 @@ test("session polling recognizes the editor's own in-flight save", async () => {
     catalog: [], kits: [], kitVersions: [], lineupVersions: [], changeLog: [], orders: [], terms: [],
     inventory: { components: {}, packedKits: {} }, supplierQuotes: {}, alternatives: {},
   };
+  const reverseObjectKeys = (value) => {
+    if (Array.isArray(value)) return value.map(reverseObjectKeys);
+    if (!value || typeof value !== "object") return value;
+    return Object.keys(value).reverse().reduce((output, key) => {
+      output[key] = reverseObjectKeys(value[key]);
+      return output;
+    }, {});
+  };
   const runner = {
     withSuccessHandler(handler) { currentSuccess = handler; return this; },
     withFailureHandler(handler) { currentFailure = handler; return this; },
@@ -661,7 +706,7 @@ test("session polling recognizes the editor's own in-flight save", async () => {
       } else if (request.action === "syncSession") {
         queueMicrotask(() => success({ ok: true, data: {
           access: { mode: "editor", canEdit: true, editor: { label: "Test browser" } },
-          state: { version: 2, snapshot: savedSnapshot },
+          state: { version: 2, snapshot: reverseObjectKeys(savedSnapshot) },
           version: 2,
         } }));
       } else {

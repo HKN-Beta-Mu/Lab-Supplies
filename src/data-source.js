@@ -82,8 +82,22 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  function canonicalize(value) {
+    if (Array.isArray(value)) return value.map(canonicalize);
+    if (!value || typeof value !== "object") return value;
+    return Object.keys(value).sort().reduce((output, key) => {
+      const normalized = canonicalize(value[key]);
+      if (normalized !== undefined) output[key] = normalized;
+      return output;
+    }, {});
+  }
+
+  function stableSerialize(value) {
+    return JSON.stringify(canonicalize(value));
+  }
+
   function sameValue(left, right) {
-    return JSON.stringify(left) === JSON.stringify(right);
+    return stableSerialize(left) === stableSerialize(right);
   }
 
   function isRecord(value) {
@@ -181,6 +195,7 @@
         statusOv: state.statusOv || {},
         vendorPolicy: state.vendorPolicy || "best",
         lineVendor: state.lineVendor || {},
+        lineSubstitute: state.lineSubstitute || {},
       },
       catalog: Array.isArray(source.catalog) ? source.catalog : [],
       kits: Array.isArray(source.kits) ? source.kits : [],
@@ -198,7 +213,12 @@
       alternatives: source.alternatives && typeof source.alternatives === "object"
         ? source.alternatives
         : {},
+      bagTypes: Array.isArray(source.bagTypes) ? source.bagTypes : [],
     });
+  }
+
+  function serializeSharedSnapshot(data) {
+    return stableSerialize(sharedSnapshot(data));
   }
 
   const remote = {
@@ -219,6 +239,7 @@
     inFlightSerialized: "",
     savePromise: null,
     retryCount: 0,
+    lastConflictNoticeVersion: 0,
     access: { mode: "connecting", canEdit: false, editor: null },
     syncTimer: null,
     syncInFlight: false,
@@ -279,7 +300,7 @@
       draft.snapshot,
       serverData || {},
     );
-    const recoveredSerialized = JSON.stringify(sharedSnapshot(recovered));
+    const recoveredSerialized = serializeSharedSnapshot(recovered);
     if (recoveredSerialized === remote.lastSavedSerialized) {
       clearRemoteDraft();
       return false;
@@ -294,6 +315,13 @@
   function setRemoteStatus(status, phase = "idle") {
     remote.status = status;
     emit("labkit:data-status", { status, phase });
+  }
+
+  function emitConflictOnce(message, version) {
+    const currentVersion = Number(version || 0);
+    if (currentVersion && currentVersion <= remote.lastConflictNoticeVersion) return;
+    remote.lastConflictNoticeVersion = Math.max(remote.lastConflictNoticeVersion, currentVersion);
+    emit("labkit:data-conflict", { message, currentVersion });
   }
 
   function requestId() {
@@ -373,7 +401,7 @@
         if (remote.pending || remote.inFlight) {
           if (incomingVersion > remote.version) {
             const server = clone(result.state.snapshot);
-            const serverSerialized = JSON.stringify(sharedSnapshot(server));
+            const serverSerialized = serializeSharedSnapshot(server);
             // Apps Script may commit our save before the original save request
             // returns. A session poll can therefore observe that exact snapshot
             // first. Treat it as an acknowledgement of our own write, not as an
@@ -398,7 +426,7 @@
             remote.baseData = server;
             remote.currentData = clone(merged);
             remote.pending = merged;
-            remote.pendingSerialized = JSON.stringify(merged);
+            remote.pendingSerialized = serializeSharedSnapshot(merged);
             writeRemoteDraft(merged);
             emit("labkit:data-loaded", {
               data: clone(merged),
@@ -406,16 +434,16 @@
               recovered: true,
               user: remote.backendUser,
             });
-            emit("labkit:data-conflict", {
-              message: "A newer saved version was merged with your unsaved changes. Saving the combined version now.",
-              currentVersion: incomingVersion,
-            });
+            emitConflictOnce(
+              "Another editor saved while you were working. Both sets of changes were combined and are saving now.",
+              incomingVersion,
+            );
           }
         } else {
           remote.version = incomingVersion;
           remote.baseData = clone(result.state.snapshot);
           remote.currentData = clone(result.state.snapshot);
-          remote.lastSavedSerialized = JSON.stringify(sharedSnapshot(remote.currentData));
+          remote.lastSavedSerialized = serializeSharedSnapshot(remote.currentData);
           emit("labkit:data-loaded", {
             data: clone(remote.currentData),
             version: remote.version,
@@ -481,7 +509,7 @@
     remote.baseData = server;
     remote.currentData = clone(merged);
     remote.pending = merged;
-    remote.pendingSerialized = JSON.stringify(merged);
+    remote.pendingSerialized = serializeSharedSnapshot(merged);
     remote.retryCount = 0;
     writeRemoteDraft(merged);
     emit("labkit:data-loaded", {
@@ -490,10 +518,10 @@
       recovered: true,
       user: remote.backendUser,
     });
-    emit("labkit:data-conflict", {
-      message: "A newer saved version was merged with your changes. Nothing was discarded.",
-      currentVersion: incomingVersion,
-    });
+    emitConflictOnce(
+      "Another editor saved while you were working. Both sets of changes were combined; nothing was discarded.",
+      incomingVersion,
+    );
     return true;
   }
 
@@ -545,6 +573,7 @@
         remote.currentData = remote.pending ? clone(remote.pending) : clone(snapshot);
         remote.lastSavedSerialized = serialized;
         remote.retryCount = 0;
+        remote.lastConflictNoticeVersion = 0;
         if (remote.pending) writeRemoteDraft(remote.pending);
         else clearRemoteDraft();
         setRemoteStatus(remote.pending ? "Saving newer changes…" : "Saved to shared sheet", remote.pending ? "saving" : "saved");
@@ -651,7 +680,7 @@
         remote.baseData = serverData ? clone(serverData) : null;
         remote.currentData = serverData ? clone(serverData) : null;
         remote.lastSavedSerialized = serverData
-          ? JSON.stringify(sharedSnapshot(serverData))
+          ? serializeSharedSnapshot(serverData)
           : "";
         remote.ready = true;
         remote.retryCount = 0;
@@ -721,6 +750,7 @@
     remote.inFlight = false;
     remote.inFlightSnapshot = null;
     remote.inFlightSerialized = "";
+    remote.lastConflictNoticeVersion = 0;
     remote.savePromise = null;
     remote.syncTimer = null;
     remote.syncInFlight = false;
@@ -855,7 +885,7 @@
       if (!isAppsScript) return writeEnvelope(data);
       if (!remote.access.canEdit) return false;
       const snapshot = sharedSnapshot(data);
-      const serialized = JSON.stringify(snapshot);
+      const serialized = serializeSharedSnapshot(snapshot);
       if (
         serialized === remote.pendingSerialized
         || serialized === remote.inFlightSerialized
