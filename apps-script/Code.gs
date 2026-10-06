@@ -1690,18 +1690,21 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
       const sold = kit.seriesKey
         ? numberOrZero_(basisTerm.items && basisTerm.items[kit.seriesKey])
         : numberOrZero_(basisTerm.kits && basisTerm.kits[kit.code]);
-      const prepared = row.prepared === undefined ? numberOrZero_(row.onHand) + sold : numberOrZero_(row.prepared);
+      const direct = Boolean(kit.individual);
+      const prepared = direct
+        ? numberOrZero_(row.onHand)
+        : (row.prepared === undefined ? numberOrZero_(row.onHand) + sold : numberOrZero_(row.prepared));
       return {
         id: "packed:" + kit.id,
         kit_id: kit.id,
         prepared: prepared,
         sold: sold,
-        quantity: Math.max(0, prepared - sold),
+        quantity: direct ? prepared : Math.max(0, prepared - sold),
         reserved: numberOrZero_(row.reserved),
-        faulty: numberOrZero_(row.faulty),
+        faulty: direct ? 0 : numberOrZero_(row.faulty),
         location: String(row.location || ""),
         counted_at: String(row.countedAt || ""),
-        basis_semester_id: String(row.basisTermId || "fa26"),
+        basis_semester_id: direct ? "" : String(row.basisTermId || "fa26"),
         note: String(row.note || ""),
         updated_at: now,
         version: version,

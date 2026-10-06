@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.05\.9"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.05\.10"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /Refresh APIs \+ AI review/);
@@ -22,7 +22,8 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /How the number is calculated/);
   assert.match(html, /Packaging bags/);
   assert.match(html, /Jump to individual kit trend/);
-  assert.match(html, /Demand over time/);
+  assert.match(html, /Demand and enrollment over time/);
+  assert.match(html, /Enrolled students/);
   assert.match(html, /General-item demand drivers/);
   assert.match(html, /Wire spool yield/);
   assert.match(html, /link-only rows never participate/);
@@ -113,9 +114,17 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.doesNotThrow(() => app.renderVals());
     const initialView = app.renderVals();
     const ece2031Inventory = initialView.inventory.packed.find((row) => row.code === "ECE 2031");
-    assert.equal(ece2031Inventory.prepared, 310);
-    assert.equal(ece2031Inventory.sold, "228");
-    assert.equal(ece2031Inventory.onHand, "82");
+  assert.equal(ece2031Inventory.prepared, 310);
+  assert.equal(ece2031Inventory.sold, "228");
+  assert.equal(ece2031Inventory.onHand, "82");
+  assert.equal(initialView.inventory.packed.length, app.kits.filter((kit) => !kit.individual).length);
+  assert.equal(initialView.inventory.generalItems.length, app.kits.filter((kit) => kit.individual).length);
+  const wireInventory = initialView.inventory.generalItems.find((row) => row.name === "Wire Kit");
+  assert.ok(wireInventory);
+  assert.equal(app.inventory.packedKits.wirekit.calculationMode, "direct");
+  wireInventory.onOnHand({ target: { value: "79" } });
+  assert.equal(app.inventory.packedKits.wirekit.onHand, 79);
+  assert.equal(app.kitInventory("wirekit").available, 79);
     assert.doesNotMatch(logic, /mape===null/);
     assert.equal(app.wireCalculation("wred", 63).spools, 1);
     assert.equal(app.wireCalculation("wred", 64).spools, 2);
@@ -175,6 +184,8 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(selectedZero, 1);
     assert.equal(planningCard.planFields[3].editable, false);
     assert.equal(planningCard.planFields[3].readOnly, true);
+    const wirePlanningCard = planningView.kitsCards.find((kit) => kit.name === "Wire Kit");
+    assert.deepEqual(wirePlanningCard.planFields.map((field) => field.label), ["Planned quantity"]);
     app.updatePlanningKitMetric("sp27", "ece2031", "purchase", 999);
     assert.equal(app.sales(app.kitMap.ece2031, "sp27").purchase, 10);
     assert.equal(app.bagNeed("bag-ece2031", ["sp27"]).gross, 10);
@@ -202,7 +213,8 @@ test("the data model initializes and can create a persisted semester", async () 
     app.setState({ scope: "global", gview: "accuracy", forecastView: "kit", forecastKitId: "ece2040", forecastSeasonFilter: "All", forecastStatusFilter: "All" });
     const kitTrend = app.renderVals().acc.kit;
     assert.equal(kitTrend.rows[0].term, "Summer 2027");
-    assert.equal(kitTrend.chart.series.length, 2);
+    assert.equal(kitTrend.chart.series.length, 3);
+    assert.ok(kitTrend.rows.every((row) => Object.prototype.hasOwnProperty.call(row, "enrollment")));
     kitTrend.onSeason({ target: { value: "Summer" } });
     assert.ok(app.renderVals().acc.kit.rows.every((row) => row.term.startsWith("Summer")));
     app.setState({ forecastKitId: "wirekit", forecastTermId: "sp27", forecastSeasonFilter: "All" });
