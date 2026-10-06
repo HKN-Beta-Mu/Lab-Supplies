@@ -228,6 +228,7 @@
     baseData: null,
     authUser: null,
     backendUser: null,
+    capabilities: { gemini: { configured: false, canReadVendorUrls: false, inputMode: "paste" } },
     connectedUid: "",
     connectPromise: null,
     pending: null,
@@ -675,6 +676,9 @@
         });
         const state = result.state || null;
         remote.backendUser = result.user || null;
+        remote.capabilities = result.capabilities && typeof result.capabilities === "object"
+          ? clone(result.capabilities)
+          : remote.capabilities;
         remote.version = Number(state?.version || 0);
         const serverData = state?.snapshot ? clone(state.snapshot) : null;
         remote.baseData = serverData ? clone(serverData) : null;
@@ -867,6 +871,12 @@
         : { mode: "editor", canEdit: true, editor: null };
     },
 
+    get capabilities() {
+      return isAppsScript
+        ? clone(remote.capabilities)
+        : { gemini: { configured: false, canReadVendorUrls: false, inputMode: "paste" } };
+    },
+
     get canEdit() {
       return isAppsScript ? remote.access.canEdit === true : true;
     },
@@ -934,6 +944,10 @@
 
     findReplacementComponents(payload) {
       return runEditorAction("findReplacementComponents", payload);
+    },
+
+    parseSupplierText(payload) {
+      return runEditorAction("parseSupplierText", payload);
     },
 
     takeOver: takeOverRemote,

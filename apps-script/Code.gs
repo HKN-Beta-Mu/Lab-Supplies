@@ -66,7 +66,7 @@ const LABKIT_SCHEMAS = Object.freeze({
   ]),
   SemesterKits: Object.freeze([
     "id", "semester_id", "kit_id", "sold", "on_hand", "faulty", "to_purchase",
-    "forecast_override", "offered", "sale_price", "revenue", "estimated_profit",
+    "packing_buffer", "forecast_override", "offered", "sale_price", "revenue", "estimated_profit",
     "updated_at", "version",
   ]),
   Inventory: Object.freeze([
@@ -84,7 +84,8 @@ const LABKIT_SCHEMAS = Object.freeze({
   VendorQuotes: Object.freeze([
     "id", "component_id", "vendor", "vendor_sku", "quantity_break", "unit_price",
     "quoted_at", "expires_at", "created_by", "version", "product_url", "shipping_cost",
-    "lead_time", "stock_available", "notes",
+    "lead_time", "stock_available", "notes", "specifications_json", "compatibility",
+    "compatibility_reason",
   ]),
   Orders: Object.freeze([
     "id", "order_number", "vendor", "date", "status", "receipt_url", "created_by",
@@ -171,13 +172,18 @@ function apiRequest(request) {
           appName: LABKIT_CONFIG.appName,
           spreadsheetName: getSpreadsheet_().getName(),
           user: publicUser_(user),
+          capabilities: publicCapabilities_(),
         });
       case "bootstrap": {
-        const access = touchEditorLease_(user, input);
+        // A newly opened session from the same authorized account supersedes a
+        // stale/closed tab immediately. Background sync still uses
+        // touchEditorLease_ and therefore cannot bounce ownership back.
+        const access = claimEditorLease_(user, input);
         return apiSuccess_({
           user: publicUser_(user),
           state: readState_(),
           access: access,
+          capabilities: publicCapabilities_(),
         });
       }
       case "syncSession":
@@ -206,6 +212,10 @@ function apiRequest(request) {
         requireRole_(user, ["admin"]);
         renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
         return apiSuccess_(findReplacementComponents_(input));
+      case "parseSupplierText":
+        requireRole_(user, ["admin"]);
+        renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
+        return apiSuccess_(parseSupplierText_(input));
       default:
         throw appError_("UNKNOWN_ACTION", "That LabKit action is not supported.");
     }
@@ -213,6 +223,17 @@ function apiRequest(request) {
     console.error("LabKit API error", error && error.stack ? error.stack : error);
     return apiFailure_(error);
   }
+}
+
+function publicCapabilities_() {
+  return {
+    gemini: {
+      configured: Boolean(getOptionalProperty_(LABKIT_CONFIG.properties.geminiApiKey)),
+      model: getOptionalProperty_(LABKIT_CONFIG.properties.geminiModel) || "gemini-2.5-flash",
+      canReadVendorUrls: false,
+      inputMode: "paste",
+    },
+  };
 }
 
 function saveSnapshot_(user, input) {
@@ -506,6 +527,83 @@ function findReplacementComponents_(input) {
     };
   }).filter(function (candidate) { return candidate.partNumber; });
   return { candidates: candidates, message: "Gemini produced research leads, not approvals or live availability. Verify manufacturer datasheets and supplier listings before saving one." };
+}
+
+function parseSupplierText_(input) {
+  const context = componentContext_(input);
+  const payload = requirePlainObject_(input.payload, "payload");
+  const sourceText = requireString_(payload.text, "text", 30000);
+  if (!getOptionalProperty_(LABKIT_CONFIG.properties.geminiApiKey)) {
+    throw appError_(
+      "AI_NOT_CONFIGURED",
+      "Gemini is not connected. Add LABKIT_GEMINI_API_KEY in Apps Script Project Settings, then deploy a new version."
+    );
+  }
+  const component = context.component;
+  const prompt = [
+    "Extract a supplier listing copied by an officer into structured fields.",
+    "Use only the pasted text. Never invent a price, stock count, shipping cost, lead time, SKU, manufacturer, package, or specification.",
+    "Return unknown values as empty strings or null. Price breaks must be unit prices, not extended totals.",
+    "Compare the listing with the saved component specifications and every kit requirement. If evidence is missing, set compatibility to unknown; only use incompatible when the pasted text directly conflicts.",
+    "Required component: " + JSON.stringify({ name: component.name, manufacturer: component.mfr, package: component.pkg, specifications: component.specs, description: component.role }),
+    "Kit requirements: " + JSON.stringify(context.requirements),
+    "Pasted supplier listing:\n" + sourceText,
+  ].join("\n");
+  const schema = {
+    type: "object",
+    properties: {
+      vendor: { type: "string" },
+      vendorSku: { type: "string" },
+      manufacturer: { type: "string" },
+      manufacturerPartNumber: { type: "string" },
+      description: { type: "string" },
+      priceBreaks: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            quantity: { type: "integer", minimum: 1 },
+            unitPrice: { type: "number", minimum: 0 },
+          },
+          required: ["quantity", "unitPrice"],
+        },
+      },
+      shippingCost: { type: "number", minimum: 0, nullable: true },
+      stock: { type: "integer", minimum: 0, nullable: true },
+      leadTime: { type: "string" },
+      specifications: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { key: { type: "string" }, value: { type: "string" } },
+          required: ["key", "value"],
+        },
+      },
+      compatibility: { type: "string", enum: ["compatible", "incompatible", "unknown"] },
+      compatibilityReason: { type: "string" },
+    },
+    required: ["vendor", "vendorSku", "manufacturer", "manufacturerPartNumber", "description", "priceBreaks", "leadTime", "specifications", "compatibility", "compatibilityReason"],
+  };
+  const result = callGeminiJson_(prompt, schema) || {};
+  return {
+    vendor: String(result.vendor || "").slice(0, 120),
+    vendorSku: String(result.vendorSku || "").slice(0, 160),
+    manufacturer: String(result.manufacturer || "").slice(0, 160),
+    manufacturerPartNumber: String(result.manufacturerPartNumber || "").slice(0, 160),
+    description: String(result.description || "").slice(0, 1200),
+    priceBreaks: arrayOrEmpty_(result.priceBreaks).slice(0, 50).map(function (row) {
+      return { quantity: Math.max(1, numberOrZero_(row.quantity)), unitPrice: Math.max(0, numberOrZero_(row.unitPrice)) };
+    }).filter(function (row) { return row.quantity && Number.isFinite(row.unitPrice); }),
+    shippingCost: result.shippingCost === null || result.shippingCost === undefined ? null : Math.max(0, numberOrZero_(result.shippingCost)),
+    stock: result.stock === null || result.stock === undefined ? null : Math.max(0, Math.floor(numberOrZero_(result.stock))),
+    leadTime: String(result.leadTime || "").slice(0, 160),
+    specifications: arrayOrEmpty_(result.specifications).slice(0, 40).map(function (row) {
+      return [String(row.key || "").slice(0, 120), String(row.value || "").slice(0, 300)];
+    }).filter(function (row) { return row[0] && row[1]; }),
+    compatibility: ["compatible", "incompatible", "unknown"].indexOf(result.compatibility) >= 0 ? result.compatibility : "unknown",
+    compatibilityReason: String(result.compatibilityReason || "The listing needs officer review.").slice(0, 1000),
+    message: "Gemini extracted a draft from the pasted listing. Review every field before saving; no vendor webpage was fetched.",
+  };
 }
 
 function refreshSupplierQuotes_(input) {
@@ -1048,6 +1146,41 @@ function touchEditorLease_(user, input) {
         : new Date(now).toISOString(),
       lastSeenAt: new Date(now).toISOString(),
       expiresAt: new Date(now + LABKIT_CONFIG.editorLeaseMilliseconds).toISOString(),
+    };
+    writeEditorLease_(lease);
+    return publicEditorAccess_(lease, sessionId, now);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function claimEditorLease_(user, input) {
+  const sessionId = requireSessionId_(input.sessionId);
+  const label = optionalSessionLabel_(input.sessionLabel);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const now = Date.now();
+    const current = readEditorLease_();
+    if (isActiveEditorLease_(current, now) && current.sessionId !== sessionId
+        && String(current.email || "").toLowerCase() !== String(user.email || "").toLowerCase()) {
+      return publicEditorAccess_(current, sessionId, now);
+    }
+    const lease = {
+      sessionId: sessionId,
+      label: label,
+      email: user.email,
+      acquiredAt: current && current.sessionId === sessionId
+        ? current.acquiredAt
+        : new Date(now).toISOString(),
+      lastSeenAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + LABKIT_CONFIG.editorLeaseMilliseconds).toISOString(),
+      displacedSessionId: current && current.sessionId !== sessionId
+        ? current.sessionId
+        : "",
+      takeoverAt: current && current.sessionId !== sessionId
+        ? new Date(now).toISOString()
+        : "",
     };
     writeEditorLease_(lease);
     return publicEditorAccess_(lease, sessionId, now);
@@ -1650,8 +1783,9 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
       const faulty = planning && adjustment.faulty !== undefined
         ? numberOrZero_(adjustment.faulty)
         : (term.id === "sp26" ? numberOrZero_(spring.faulty) : 0);
+      const packingBuffer = planning ? numberOrZero_(adjustment.buffer) : 0;
       const toPurchase = planning
-        ? Math.max(0, planned - onHand)
+        ? Math.max(0, planned + packingBuffer - onHand)
         : (term.id === "sp26" ? numberOrZero_(spring.purchase) : Math.max(0, planned - allocation));
       semesterKitRows.push({
         id: String(term.id) + ":" + String(kit.id),
@@ -1661,6 +1795,7 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         on_hand: onHand,
         faulty: faulty,
         to_purchase: toPurchase,
+        packing_buffer: packingBuffer,
         forecast_override: isPlainObject_(state.overrides) ? state.overrides[kit.id] : "",
         offered: offered,
         sale_price: salePrice,
@@ -1761,6 +1896,9 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
             lead_time: quote.leadTime || "",
             stock_available: quote.available === null || quote.available === undefined ? "" : numberOrZero_(quote.available),
             notes: quote.notes || "",
+            specifications_json: jsonCell_(quote.specifications || []),
+            compatibility: quote.meetsRequirements === true ? "compatible" : (quote.meetsRequirements === false ? "incompatible" : "review"),
+            compatibility_reason: quote.requirementReason || "",
           });
         });
     });

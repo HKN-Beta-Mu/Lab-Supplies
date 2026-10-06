@@ -192,18 +192,22 @@ test("the data model initializes and can create a persisted semester", async () 
     const planningCard = planningView.kitsCards.find((kit) => kit.code === "ECE 2031");
     assert.equal(planningCard.status, "Planning");
     assert.deepEqual(planningCard.planFields.map((field) => field.label), [
-      "Planned demand", "Packed usable", "Faulty / unusable", "To assemble",
+      "Planned demand", "Packed usable", "Faulty / unusable", "Extra packing buffer", "To assemble",
     ]);
     let selectedZero = 0;
     planningCard.planFields[0].onFocus({ target: { value: "0", select() { selectedZero += 1; } } });
     assert.equal(selectedZero, 1);
-    assert.equal(planningCard.planFields[3].editable, false);
-    assert.equal(planningCard.planFields[3].readOnly, true);
+    assert.equal(planningCard.planFields[4].editable, false);
+    assert.equal(planningCard.planFields[4].readOnly, true);
     const wirePlanningCard = planningView.kitsCards.find((kit) => kit.name === "Wire Kit");
     assert.deepEqual(wirePlanningCard.planFields.map((field) => field.label), ["Planned quantity"]);
     app.updatePlanningKitMetric("sp27", "ece2031", "purchase", 999);
     assert.equal(app.sales(app.kitMap.ece2031, "sp27").purchase, 10);
     assert.equal(app.bagNeed("bag-ece2031", ["sp27"]).gross, 10);
+    app.updatePlanningKitMetric("sp27", "ece2031", "buffer", 5);
+    assert.equal(app.sales(app.kitMap.ece2031, "sp27").purchase, 15);
+    assert.equal(app.sales(app.kitMap.ece2031, "sp27").total, 25);
+    assert.equal(app.bagNeed("bag-ece2031", ["sp27"]).gross, 15);
     assert.ok(planningView.comb.terms.some((term) => term.label === "Spring 2027"));
     assert.ok(!planningView.comb.terms.some((term) => term.label === "Fall 2026"));
     app.openPart("hct00");
@@ -236,7 +240,7 @@ test("the data model initializes and can create a persisted semester", async () 
     app.setSubstituteChoice("sp27:hct20", "hct20", approvedAlternative.id);
     const substituteRow = app.renderVals().list.rows.find((row) => row.name === "74HCT20");
     assert.equal(substituteRow.sourceSel, approvedAlternative.id);
-    assert.match(substituteRow.sourceNote, /approved alternative/i);
+    assert.match(substituteRow.sourceNote, /approved replacement/i);
     assert.equal(substituteRow.url, "https://example.com/cd74hct20e");
     const wireOrderRow = app.renderVals().list.rows.find((row) => row.name === "Red Hookup Wire");
     assert.match(wireOrderRow.needed, /cuts \(\d+ spools?\)/);
@@ -340,7 +344,7 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.ok(lastSaved.lineupVersions.length >= 1);
     assert.equal(lastSaved.inventory.packedKits.ece2031.prepared, 238);
     assert.equal(lastSaved.supplierReferenceDataVersion, "2026-10-05-v1");
-    assert.equal(lastSaved.dataSchemaVersion, "2026-10-06-v4");
+    assert.equal(lastSaved.dataSchemaVersion, "2026-10-06-v5");
     assert.equal(lastSaved.bagTypes.length, 4);
     assert.equal(lastSaved.state.priceTestValues, undefined);
     assert.equal(lastSaved.state.priceTestOpen, undefined);
@@ -822,6 +826,8 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   assert.match(source, /function refreshSupplierQuotes_/);
   assert.match(source, /function generateComponentDescription_/);
   assert.match(source, /function findReplacementComponents_/);
+  assert.match(source, /function parseSupplierText_/);
+  assert.match(source, /function claimEditorLease_/);
   assert.match(source, /Mouser Search API/);
   assert.match(source, /DigiKey Product Information API/);
   assert.match(source, /Newark Product Search API/);
@@ -978,7 +984,7 @@ test("Apps Script editor lease grants one writer and promotes a viewer after rel
   const leaseApi = new Function(
     "PropertiesService",
     "LockService",
-    `${source}\nreturn { touchEditorLease_, releaseEditorLease_, takeOverEditorLease_ };`,
+    `${source}\nreturn { touchEditorLease_, claimEditorLease_, releaseEditorLease_, takeOverEditorLease_ };`,
   )(PropertiesService, LockService);
   const user = { email: "hknlabsuppliesgatech@gmail.com" };
   const first = {
@@ -995,6 +1001,14 @@ test("Apps Script editor lease grants one writer and promotes a viewer after rel
   assert.equal(editor.canEdit, true);
   assert.equal(viewer.canEdit, false);
   assert.equal(viewer.editor.label, "Safari on macOS");
+  const reclaimed = leaseApi.claimEditorLease_(user, second);
+  assert.equal(reclaimed.canEdit, true);
+  assert.equal(reclaimed.editor.label, "Chrome on Windows");
+  const firstAfterClaim = leaseApi.touchEditorLease_(user, first);
+  assert.equal(firstAfterClaim.canEdit, false);
+  assert.equal(firstAfterClaim.forcedSignOut, true);
+  assert.equal(leaseApi.releaseEditorLease_(second).released, true);
+  assert.equal(leaseApi.touchEditorLease_(user, first).canEdit, true);
   const takeover = leaseApi.takeOverEditorLease_(user, second);
   assert.equal(takeover.access.canEdit, true);
   const displaced = leaseApi.touchEditorLease_(user, first);
