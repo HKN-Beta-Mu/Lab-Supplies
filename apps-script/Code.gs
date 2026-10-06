@@ -1646,8 +1646,8 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
       const faulty = planning && adjustment.faulty !== undefined
         ? numberOrZero_(adjustment.faulty)
         : (term.id === "sp26" ? numberOrZero_(spring.faulty) : 0);
-      const toPurchase = planning && adjustment.purchase !== undefined
-        ? numberOrZero_(adjustment.purchase)
+      const toPurchase = planning
+        ? Math.max(0, planned - onHand)
         : (term.id === "sp26" ? numberOrZero_(spring.purchase) : Math.max(0, planned - allocation));
       semesterKitRows.push({
         id: String(term.id) + ":" + String(kit.id),

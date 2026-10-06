@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.05\.8"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.05\.9"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /Refresh APIs \+ AI review/);
@@ -21,6 +21,9 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /Try Gemini review/);
   assert.match(html, /How the number is calculated/);
   assert.match(html, /Packaging bags/);
+  assert.match(html, /Jump to individual kit trend/);
+  assert.match(html, /Demand over time/);
+  assert.match(html, /General-item demand drivers/);
   assert.match(html, /Wire spool yield/);
   assert.match(html, /link-only rows never participate/);
   assert.match(html, /Newark only/);
@@ -167,6 +170,13 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.deepEqual(planningCard.planFields.map((field) => field.label), [
       "Planned demand", "Packed usable", "Faulty / unusable", "To assemble",
     ]);
+    let selectedZero = 0;
+    planningCard.planFields[0].onFocus({ target: { value: "0", select() { selectedZero += 1; } } });
+    assert.equal(selectedZero, 1);
+    assert.equal(planningCard.planFields[3].editable, false);
+    assert.equal(planningCard.planFields[3].readOnly, true);
+    app.updatePlanningKitMetric("sp27", "ece2031", "purchase", 999);
+    assert.equal(app.sales(app.kitMap.ece2031, "sp27").purchase, 10);
     assert.equal(app.bagNeed("bag-ece2031", ["sp27"]).gross, 10);
     assert.ok(planningView.comb.terms.some((term) => term.label === "Spring 2027"));
     assert.ok(!planningView.comb.terms.some((term) => term.label === "Fall 2026"));
@@ -180,11 +190,27 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(forecastView.aiStatus, "History model active");
     assert.match(forecastView.method, /three most recent completed Spring semesters/);
     assert.match(forecastView.trendRows.find((row) => row.code === "ECE 2031").reason, /Spring/);
+    assert.equal(forecastView.kitNav.length, app.kits.length);
+    forecastView.kitNav.find((row) => row.label === "ECE 2040").go();
+    assert.equal(app.state.forecastView, "kit");
+    assert.equal(app.state.forecastKitId, "ece2040");
 
     app.state.semesterDraft = { season: "Summer", year: 2027 };
     app.createSemester();
     assert.equal(app.termMap.su27.inventoryApplied, false);
     assert.equal(app.termMap.su27.inventoryAllocation.components.hct00, undefined);
+    app.setState({ scope: "global", gview: "accuracy", forecastView: "kit", forecastKitId: "ece2040", forecastSeasonFilter: "All", forecastStatusFilter: "All" });
+    const kitTrend = app.renderVals().acc.kit;
+    assert.equal(kitTrend.rows[0].term, "Summer 2027");
+    assert.equal(kitTrend.chart.series.length, 2);
+    kitTrend.onSeason({ target: { value: "Summer" } });
+    assert.ok(app.renderVals().acc.kit.rows.every((row) => row.term.startsWith("Summer")));
+    app.setState({ forecastKitId: "wirekit", forecastTermId: "sp27", forecastSeasonFilter: "All" });
+    const generalTrend = app.renderVals().acc;
+    assert.match(generalTrend.method, /General items/);
+    assert.ok(generalTrend.kit.drivers.some((row) => row.course.startsWith("ECE 4180")));
+    assert.equal(app.driverActive(app.generalItemDrivers.find((row) => row.course === "ECE 2035"), app.termMap.fa24), false);
+    assert.equal(app.driverActive(app.generalItemDrivers.find((row) => row.course === "ECE 2035"), app.termMap.fa25), true);
 
     assert.doesNotThrow(() => app.startKitEdit("ece2031", "future"));
     assert.equal(app.state.scope, "global");
@@ -313,6 +339,7 @@ test("historical sales import preserves the supplied semester and Square totals"
     /Half-price wire kits/,
   );
   assert.equal(summer.cls["ECE 2031 (+ Online)"], 111);
+  assert.equal(summer.cls["ECE 4180"], 0);
   assert.equal(spring2015.cls["ECE 3741"], 367);
 });
 
