@@ -105,7 +105,7 @@ Authenticated editor-only actions use optional external services:
 ```text
 POST { action: "suggestSemester", payload: { season, year, notes } }
 POST { action: "refreshSupplierQuotes", payload: { componentId, quantity } }
-POST { action: "lookupVendorComponent", payload: { vendor, query } }
+POST { action: "lookupVendorComponent", payload: { vendor, query, url, categories } }
 POST { action: "parseNewComponentText", payload: { text, vendor, categories } }
 ```
 
@@ -122,17 +122,26 @@ its provider, source timestamp, requested and order quantities, MOQ/multiple,
 and price breaks. Shipping is excluded unless the supplier explicitly returns
 it.
 
-`lookupVendorComponent` is used when an officer adds a component that is not
-in the catalog yet. For one configured supplier (Mouser, DigiKey, or Newark) it
-searches a part number, vendor SKU, or keyword and returns up to twelve priced
-candidates: manufacturer part number, manufacturer, description, vendor
-category, package, link, datasheet, stock, and price breaks, all taken from the
-supplier API. It reads no saved state and fetches no vendor webpage. Package and
-category are read defensively from vendor attributes and may be empty; the
-browser guesses the rest from the description and the officer reviews it.
-`parseNewComponentText` does the same for vendors without an API: Gemini extracts
-only facts present in text the officer pasted. The category must be one of the
-catalog's existing categories, and no vendor link is invented.
+`lookupVendorComponent` is used when an officer adds a component that is not in
+the catalog yet. Given a vendor name, a part number/SKU/keyword, and optionally a
+product link, Gemini researches the part with its own web tools (Google Search
+grounding, plus URL context when a link is given) and returns up to three
+candidates: part number, vendor SKU, manufacturer, description, package,
+category, stock, price breaks, product link, and datasheet link. It needs only
+the Gemini key, not vendor API credentials, and it reads no saved state. Research
+and extraction are two requests because the web tools are not combined with a
+JSON schema. A product or datasheet link is kept only if the officer typed it,
+Gemini's URL tool retrieved it, or its site is one the search cited; Google's
+redirect links and unsupported links are dropped. Many vendor sites block
+automated readers, so the officer can paste the listing text instead
+(`parseNewComponentText`), which uses only the pasted text. Package and category
+are best-effort guesses, and the category must be one of the catalog's categories.
+
+Prices from `lookupVendorComponent` are read from web pages by an AI. They are
+returned as drafts, saved with `priceSource: "gemini-web"`, and called out in
+every purchase plan that allocates to them until the officer ticks that the prices
+were checked on the product page. `refreshSupplierQuotes` is separate and still
+uses the supplier APIs for verified quotes.
 
 The browser saves a chosen candidate as an officer-maintained (`manual`) vendor
 listing on the new component, with its source and look-up date, in one undoable

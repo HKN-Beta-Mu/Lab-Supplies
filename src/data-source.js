@@ -197,6 +197,8 @@
         lineVendor: state.lineVendor || {},
         lineSubstitute: state.lineSubstitute || {},
         lineProgress: state.lineProgress || {},
+        semesterVendor: state.semesterVendor || {},
+        combineNotes: state.combineNotes || {},
       },
       catalog: Array.isArray(source.catalog) ? source.catalog : [],
       kits: Array.isArray(source.kits) ? source.kits : [],
@@ -230,7 +232,7 @@
     authUser: null,
     backendUser: null,
     capabilities: {
-      gemini: { configured: false, canReadVendorUrls: false, inputMode: "paste" },
+      gemini: { configured: false, canReadVendorUrls: false, inputMode: "web-or-paste" },
       suppliers: { mouser: false, digikey: false, newark: false },
     },
     connectedUid: "",
@@ -879,7 +881,7 @@
       return isAppsScript
         ? clone(remote.capabilities)
         : {
-          gemini: { configured: false, canReadVendorUrls: false, inputMode: "paste" },
+          gemini: { configured: false, canReadVendorUrls: false, inputMode: "web-or-paste" },
           suppliers: { mouser: false, digikey: false, newark: false },
         };
     },

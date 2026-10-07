@@ -250,8 +250,8 @@ function publicCapabilities_() {
     gemini: {
       configured: Boolean(getOptionalProperty_(LABKIT_CONFIG.properties.geminiApiKey)),
       model: getOptionalProperty_(LABKIT_CONFIG.properties.geminiModel) || "gemini-2.5-flash",
-      canReadVendorUrls: false,
-      inputMode: "paste",
+      canReadVendorUrls: true,
+      inputMode: "web-or-paste",
     },
   };
 }
@@ -757,76 +757,187 @@ function refreshSupplierQuotes_(input) {
   };
 }
 
-const PACKAGE_ATTRIBUTE_PATTERN_ = /^(package\s*\/\s*case|supplier device package|package|case code|case)\b/i;
-
-// Reads one named attribute from a vendor's attribute list. Missing or oddly shaped lists simply yield "".
-function attributeValue_(rows, nameKey, valueKey, pattern) {
-  const found = arrayOrEmpty_(rows).find(function (row) {
-    return isPlainObject_(row) && pattern.test(String(row[nameKey] || "").trim()) && String(row[valueKey] || "").trim();
+// Gemini's own web tools (Google Search grounding and URL context) are called WITHOUT a JSON schema: the documentation does not say
+// the two can be combined, so research and extraction are separate requests.
+function callGeminiGrounded_(prompt, tools) {
+  const apiKey = getRequiredProperty_(LABKIT_CONFIG.properties.geminiApiKey);
+  const model = getOptionalProperty_(LABKIT_CONFIG.properties.geminiModel) || "gemini-2.5-flash";
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+    encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(apiKey);
+  const response = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: String(prompt) }] }],
+      tools: tools,
+      generationConfig: { temperature: 0.1 },
+    }),
+    muteHttpExceptions: true,
   });
-  return found ? String(found[valueKey]).trim().slice(0, 120) : "";
+  const body = parseProviderResponse_(response, "Gemini");
+  const candidate = arrayOrEmpty_(body.candidates)[0] || {};
+  const content = candidate.content || {};
+  const text = arrayOrEmpty_(content.parts).map(function (part) { return String(part.text || ""); }).join("");
+  if (!text) throw new Error("Gemini returned an empty response.");
+  // Metadata field names are read in both camelCase and snake_case, and any missing piece simply yields an empty list.
+  const grounding = candidate.groundingMetadata || candidate.grounding_metadata || {};
+  const sources = arrayOrEmpty_(grounding.groundingChunks || grounding.grounding_chunks).map(function (chunk) {
+    return chunk && chunk.web ? { uri: String(chunk.web.uri || ""), title: String(chunk.web.title || "") } : null;
+  }).filter(Boolean);
+  const context = candidate.urlContextMetadata || candidate.url_context_metadata || {};
+  const retrieved = arrayOrEmpty_(context.urlMetadata || context.url_metadata).map(function (entry) {
+    return {
+      url: String((entry && (entry.retrievedUrl || entry.retrieved_url)) || ""),
+      status: String((entry && (entry.urlRetrievalStatus || entry.url_retrieval_status)) || ""),
+    };
+  });
+  return { text: text, sources: sources, retrieved: retrieved };
 }
 
-const LOOKUP_VENDORS_ = {
-  Mouser: { flag: "mouser", fetch: function (component) { return fetchMouserQuotes_(component, 1); } },
-  DigiKey: { flag: "digikey", fetch: function (component) { return fetchDigiKeyQuotes_(component, 1); } },
-  Newark: { flag: "newark", fetch: function (component) { return fetchNewarkQuotes_(component, 1); } },
-};
+function hostOf_(url) {
+  const match = String(url || "").match(/^https:\/\/([^\/?#:@]+)/i);
+  return match ? match[1].toLowerCase().replace(/^www\./, "") : "";
+}
 
-// Search one configured supplier for a part number, SKU or keyword and return catalog-ready candidates. It reads no saved state
-// and never fetches a vendor webpage: every value comes from the supplier's own API response.
+// A product or datasheet link is kept only if the officer typed it, Gemini's URL tool really retrieved it, or its site is one the
+// search cited. Google's grounding redirect links and anything Gemini only "remembered" are dropped.
+function acceptLookupUrl_(url, typedUrl, retrieved, sources) {
+  const value = String(url || "").trim();
+  const host = hostOf_(value);
+  if (!host || /(^|\.)google\.com$/.test(host) || /(^|\.)googleusercontent\.com$/.test(host)) return "";
+  if (typedUrl && value === typedUrl) return value;
+  if (arrayOrEmpty_(retrieved).some(function (entry) { return entry.url === value; })) return value;
+  const cited = arrayOrEmpty_(sources).some(function (source) {
+    const domain = String(source.title || "").trim().toLowerCase().replace(/^www\./, "");
+    return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain) && (host === domain || host.endsWith("." + domain));
+  });
+  return cited ? value : "";
+}
+
+// Find a component at a vendor with Gemini's web tools. Everything returned is a draft the officer reviews: prices are read from
+// web pages by an AI, so the browser marks the saved listing unverified until the officer confirms them.
 function lookupVendorComponent_(input) {
   const payload = requirePlainObject_(input.payload, "payload");
-  const vendor = requireString_(payload.vendor, "vendor", 40);
-  const query = requireString_(payload.query, "query", 160);
-  if (!Object.prototype.hasOwnProperty.call(LOOKUP_VENDORS_, vendor)) {
-    throw appError_("INVALID_INPUT", "Supported vendor lookups: " + Object.keys(LOOKUP_VENDORS_).join(", ") + ".");
+  const vendor = typeof payload.vendor === "string" ? payload.vendor.trim().slice(0, 120) : "";
+  const query = typeof payload.query === "string" ? payload.query.trim() : "";
+  const typedUrl = typeof payload.url === "string" ? payload.url.trim() : "";
+  if (query.length > 160) throw appError_("INVALID_INPUT", "query is too long.");
+  if (typedUrl && (typedUrl.length > 600 || !hostOf_(typedUrl))) {
+    throw appError_("INVALID_INPUT", "Enter the product link as an https:// address.");
   }
-  const provider = LOOKUP_VENDORS_[vendor];
-  if (!configuredSuppliers_()[provider.flag]) {
-    throw appError_("SUPPLIER_NOT_CONFIGURED", vendor + " is not configured. Add its API credentials in Apps Script Project Settings, then deploy a new version.");
+  if (!query && !typedUrl) throw appError_("INVALID_INPUT", "Enter a part number, SKU, keyword, or product link.");
+  const categories = arrayOrEmpty_(payload.categories).filter(function (value) {
+    return typeof value === "string" && value.trim() && value.length <= 80;
+  }).slice(0, 40);
+  if (!getOptionalProperty_(LABKIT_CONFIG.properties.geminiApiKey)) {
+    throw appError_(
+      "AI_NOT_CONFIGURED",
+      "Gemini is not connected. Add LABKIT_GEMINI_API_KEY in Apps Script Project Settings, then deploy a new version."
+    );
   }
-  let quotes;
+  const target = [query ? "part number, SKU or keyword \"" + query + "\"" : "", vendor ? "vendor " + vendor : ""].filter(Boolean).join(" at ");
+  const research = [
+    "Find the electronics component with " + target + ".",
+    typedUrl ? "Read this product page first: " + typedUrl : "Search the vendor's own product page and the manufacturer's datasheet.",
+    "Report, for up to 3 matching products: manufacturer part number, vendor SKU, manufacturer, a one-line description, the package, the product category, quantity price breaks in USD, stock, lead time, the product page URL, and the datasheet URL.",
+    "Report only what you actually see in a retrieved page or search result. Write \"unknown\" for anything you did not see. Never estimate or guess a price.",
+  ].join("\n");
+  let result;
   try {
-    quotes = provider.fetch({ id: "lookup", name: query, mfr: "", pkg: "" });
+    result = callGeminiGrounded_(research, typedUrl ? [{ url_context: {} }, { google_search: {} }] : [{ google_search: {} }]);
   } catch (error) {
-    throw appError_("SUPPLIER_UNAVAILABLE", vendor + " lookup failed: " + safeProviderMessage_(error));
+    throw appError_(
+      "AI_UNAVAILABLE",
+      "Gemini could not run its web lookup: " + safeProviderMessage_(error) +
+      " If LABKIT_GEMINI_MODEL is set to an older model, use gemini-2.5-flash or newer, or paste the listing text instead."
+    );
   }
-  const seen = {};
-  const candidates = arrayOrEmpty_(quotes).filter(function (quote) {
-    const key = String(quote.vendorSku || quote.manufacturerPartNumber || "");
-    if (!key || seen[key]) return false;
-    seen[key] = true;
-    return true;
-  }).slice(0, 12).map(function (quote) {
+  const extractionPrompt = [
+    "Turn these research notes into structured candidates. Use only the notes; never add a value that is not in them.",
+    "Leave unknown values as empty strings or null. Price breaks must be per-unit USD prices. Choose category only from this list, or leave it empty: " + JSON.stringify(categories),
+    "Research notes:\n" + result.text.slice(0, 12000),
+  ].join("\n");
+  const schema = {
+    type: "object",
+    properties: {
+      candidates: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            vendorSku: { type: "string" },
+            manufacturer: { type: "string" },
+            description: { type: "string" },
+            packageName: { type: "string" },
+            category: categories.length ? { type: "string", enum: categories.concat([""]) } : { type: "string" },
+            productUrl: { type: "string" },
+            datasheetUrl: { type: "string" },
+            available: { type: "integer", minimum: 0, nullable: true },
+            leadTime: { type: "string" },
+            priceBreaks: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { quantity: { type: "integer", minimum: 1 }, unitPrice: { type: "number", minimum: 0 } },
+                required: ["quantity", "unitPrice"],
+              },
+            },
+          },
+          required: ["name", "vendorSku", "manufacturer", "description", "packageName", "category", "productUrl", "datasheetUrl", "leadTime", "priceBreaks"],
+        },
+      },
+    },
+    required: ["candidates"],
+  };
+  const extracted = callGeminiJson_(extractionPrompt, schema) || {};
+  const candidates = arrayOrEmpty_(extracted.candidates).slice(0, 3).map(function (row) {
+    const breaks = arrayOrEmpty_(row.priceBreaks).slice(0, 20).map(function (entry) {
+      return { quantity: Math.max(1, numberOrZero_(entry.quantity) || 1), unitPrice: Number(entry.unitPrice) };
+    }).filter(function (entry) { return Number.isFinite(entry.unitPrice) && entry.unitPrice >= 0; })
+      .sort(function (a, b) { return a.quantity - b.quantity; });
+    const category = String(row.category || "").trim();
     return {
       vendor: vendor,
-      vendorSku: String(quote.vendorSku || "").slice(0, 160),
-      name: String(quote.manufacturerPartNumber || quote.vendorSku || "").slice(0, 160),
-      manufacturer: String(quote.manufacturer || "").slice(0, 160),
-      description: String(quote.description || "").slice(0, 1200),
-      category: String(quote.category || "").slice(0, 160),
-      packageName: String(quote.packageName || "").slice(0, 120),
-      productUrl: String(quote.productUrl || "").slice(0, 600),
-      datasheetUrl: String(quote.datasheetUrl || "").slice(0, 600),
-      available: quote.available === undefined || quote.available === null ? null : numberOrZero_(quote.available),
-      leadTime: String(quote.leadTime || "").slice(0, 160),
-      minimumOrderQuantity: Math.max(1, numberOrZero_(quote.minimumOrderQuantity) || 1),
-      unitPrice: Number.isFinite(Number(quote.unitPrice)) ? Number(quote.unitPrice) : null,
-      priceBreaks: arrayOrEmpty_(quote.priceBreaks).slice(0, 20).map(function (row) {
-        return { quantity: Math.max(1, numberOrZero_(row.quantity) || 1), unitPrice: Number(row.unitPrice) };
-      }).filter(function (row) { return Number.isFinite(row.unitPrice) && row.unitPrice >= 0; }),
-      source: String(quote.source || vendor),
+      vendorSku: String(row.vendorSku || "").slice(0, 160),
+      name: String(row.name || "").slice(0, 160),
+      manufacturer: String(row.manufacturer || "").slice(0, 160),
+      description: String(row.description || "").slice(0, 1200),
+      category: categories.indexOf(category) >= 0 ? category : "",
+      packageName: String(row.packageName || "").slice(0, 120),
+      productUrl: acceptLookupUrl_(row.productUrl, typedUrl, result.retrieved, result.sources).slice(0, 600),
+      datasheetUrl: acceptLookupUrl_(row.datasheetUrl, "", result.retrieved, result.sources).slice(0, 600),
+      available: row.available === null || row.available === undefined ? null : Math.max(0, Math.floor(numberOrZero_(row.available))),
+      leadTime: String(row.leadTime || "").slice(0, 160),
+      minimumOrderQuantity: breaks.length ? breaks[0].quantity : 1,
+      unitPrice: breaks.length ? breaks[0].unitPrice : null,
+      priceBreaks: breaks,
+      source: "Gemini web lookup",
+      unverifiedPrice: breaks.length > 0,
     };
+  }).filter(function (candidate) { return candidate.name; });
+  // A single candidate from a page the officer pointed at is that page's product, so the typed link is its link.
+  if (typedUrl && candidates.length === 1 && !candidates[0].productUrl) candidates[0].productUrl = typedUrl;
+  const domains = [];
+  result.sources.forEach(function (source) {
+    const title = String(source.title || "").trim();
+    if (title && domains.indexOf(title) < 0 && domains.length < 8) domains.push(title);
+  });
+  const unreadable = typedUrl && result.retrieved.length && !result.retrieved.some(function (entry) {
+    return /SUCCESS/i.test(entry.status);
   });
   return {
     vendor: vendor,
     query: query,
     candidates: candidates,
+    sourceDomains: domains,
     checkedAt: new Date().toISOString(),
     message: candidates.length
-      ? vendor + " returned " + candidates.length + " priced match" + (candidates.length === 1 ? "" : "es") + ". Review the part before using it."
-      : vendor + " returned no priced match for “" + query + "”. Try the manufacturer part number or the vendor SKU.",
+      ? "Gemini found " + candidates.length + " possible match" + (candidates.length === 1 ? "" : "es") +
+        (domains.length ? " using " + domains.join(", ") : "") +
+        ". Prices were read from the web by Gemini, so confirm them on the product page before ordering." +
+        (unreadable ? " The product page you gave could not be read (many vendor sites block automated readers), so check this draft carefully or paste the listing text instead." : "")
+      : "Gemini found no match" + (query ? " for “" + query + "”" : "") + ". Try the manufacturer part number, a product link, or paste the listing text instead.",
   };
 }
 
@@ -957,8 +1068,6 @@ function fetchMouserQuotes_(component, quantity) {
       description: String(part.Description || ""),
       productUrl: String(part.ProductDetailUrl || ""),
       datasheetUrl: String(part.DataSheetUrl || ""),
-      category: String(part.Category || ""),
-      packageName: attributeValue_(part.ProductAttributes, "AttributeName", "AttributeValue", PACKAGE_ATTRIBUTE_PATTERN_),
       requestedQuantity: quantity,
       orderQuantity: orderQuantity,
       minimumOrderQuantity: minimum,
@@ -1019,8 +1128,6 @@ function fetchDigiKeyQuotes_(component, quantity) {
         description: String(body.Description && (body.Description.ProductDescription || body.Description.DetailedDescription) || ""),
         productUrl: String(body.ProductUrl || ""),
         datasheetUrl: "",
-        category: String(body.Category && body.Category.Name || ""),
-        packageName: attributeValue_(body.Parameters, "ParameterText", "ValueText", PACKAGE_ATTRIBUTE_PATTERN_),
         requestedQuantity: quantity,
         orderQuantity: orderQuantity,
         minimumOrderQuantity: Math.max(1, numberOrZero_(product.MinimumOrderQuantity) || 1),
@@ -1113,8 +1220,6 @@ function fetchNewarkQuotes_(component, quantity) {
       description: String(part.displayName || part.productOverview && part.productOverview.description || ""),
       productUrl: String(part.productURL || part.productUrl || ""),
       datasheetUrl: datasheets.length ? String(datasheets[0].url || "") : "",
-      category: "",
-      packageName: attributeValue_(part.attributes, "attributeLabel", "attributeValue", PACKAGE_ATTRIBUTE_PATTERN_),
       requestedQuantity: quantity,
       orderQuantity: orderQuantity,
       minimumOrderQuantity: minimum,
@@ -2359,7 +2464,7 @@ function apiFailure_(error) {
     "INVALID_INPUT", "INVALID_REQUEST_ID",
     "INVALID_SESSION", "INVALID_SNAPSHOT", "NOT_INITIALIZED", "SCHEMA_CONFLICT",
     "SCHEMA_ERROR", "SNAPSHOT_TOO_LARGE", "STATE_CORRUPT", "UNKNOWN_ACTION",
-    "SUPPLIER_UNAVAILABLE", "SUPPLIER_NOT_CONFIGURED", "AI_NOT_CONFIGURED", "VERSION_CONFLICT",
+    "SUPPLIER_UNAVAILABLE", "SUPPLIER_NOT_CONFIGURED", "AI_NOT_CONFIGURED", "AI_UNAVAILABLE", "VERSION_CONFLICT",
   ];
   const code = error && safeCodes.indexOf(error.code) >= 0 ? error.code : "INTERNAL";
   const message = code === "INTERNAL"

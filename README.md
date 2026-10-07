@@ -10,8 +10,11 @@ per-kit requirements on every BOM line, versions kit definitions by semester,
 keeps editable sales and undoable change history, and records both bulk and
 one-off orders with paid prices and receipt links. It also supports reviewable
 Gemini demand suggestions plus verified Mouser/DigiKey/Newark pricing. AI never
-supplies prices or applies a plan automatically; the officer edits and approves
-the draft.
+applies a plan automatically; the officer edits and approves the draft. When a
+new component is added from a vendor, Gemini can read the part and its prices
+from the web; those prices are drafts, marked unverified until an officer checks
+them. Each semester can also be pointed at one vendor, and a bulk purchase finds
+the most economical split between two vendors when the cheaper one runs short.
 
 The supplied design prototype has been packaged as the application entry point
 and extended with responsive behavior and persistent shared data. The semester

@@ -209,14 +209,19 @@ future semesters are retained.
   supplier descriptions with per-kit requirements, but it never invents or
   changes a supplier price. Shipping is not assumed when the supplier API does
   not return it.
-- **Adding a component from a vendor.** In the component dialog an officer can pick
-  Mouser, DigiKey, or Newark, enter a part number or SKU, and fill the new
-  component and its vendor listing from that supplier's API (`lookupVendorComponent`).
-  For vendors without an API (for example Jameco) they paste the listing text and
-  Gemini drafts the fields from that text only (`parseNewComponentText`); no vendor
-  webpage is opened. These actions need this update deployed as a new version, and
-  each supplier needs its own credentials above. Without them the vendor fields
-  can still be typed by hand.
+- **Adding a component from a vendor uses Gemini, not the supplier APIs.** In the
+  component dialog an officer enters a vendor, a part number or SKU, and
+  optionally a product link; Gemini searches the web and reads the page
+  (`lookupVendorComponent`) and fills the new component and its vendor listing.
+  This needs only `LABKIT_GEMINI_API_KEY` and a new deployment, and the model must
+  support Google Search grounding (`gemini-2.5-flash` or newer). Prices are read
+  from web pages by an AI, so they are saved as unverified until an officer
+  confirms them, and every plan that uses one says so. Some vendor sites block
+  automated readers; then the officer can paste the listing text
+  (`parseNewComponentText`), or type the fields by hand. Search grounding may be
+  billed or limited separately from plain Gemini calls, so check Google's current
+  pricing page. The Mouser, DigiKey and Newark credentials above are used only by
+  "Refresh supplier quotes".
 - **Estimates stay labeled.** Existing design estimates remain useful before
   credentials are configured, but a verified acceptable API quote takes
   priority in cheapest-price calculations.

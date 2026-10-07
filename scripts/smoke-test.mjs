@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.06\.19"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.06\.20"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -168,6 +168,67 @@ test("the data model initializes and can create a persisted semester", async () 
     const splitVendorPlan = app.vendorPlan("hct04", 120);
     assert.deepEqual(splitVendorPlan.allocations.map((row) => [row.vendor, row.qty]), [["Vendor A", 50], ["Vendor B", 70]]);
     assert.match(splitVendorPlan.decision, /Stock requires a split/);
+    // Economical split: the cheapest vendor is short on stock, so the system buys the most economical combination.
+    const listing = (id, vendor, unit, extra = {}) => ({
+      id, vendor, manual: true, productUrl: "https://example.com/" + id, priceBreaks: [{ quantity: 1, unitPrice: unit }],
+      shippingCost: 0, available: 100000, leadTime: "3 days", domestic: true, meetsRequirements: true, ...extra,
+    });
+    app.supplierQuotes.hct04 = [listing("cheap", "Cheap Co", 0.05, { available: 120 }), listing("steady", "Steady Co", 0.08, { available: 500 })];
+    const shortStock = app.vendorPlan("hct04", 200);
+    assert.deepEqual(shortStock.allocations.map((row) => [row.vendor, row.qty]), [["Cheap Co", 120], ["Steady Co", 80]]);
+    assert.ok(Math.abs(shortStock.total - (120 * 0.05 + 80 * 0.08)) < 1e-9);
+    assert.match(shortStock.decision, /Most economical split: 120 from Cheap Co, 80 from Steady Co/);
+    assert.match(shortStock.decision, /saving \$3\.60 vs\. buying everything from Steady Co/);
+    assert.match(shortStock.decision, /Cheap Co is cheapest but lists only 120 in stock/);
+    // Shipping can make one vendor win even though the other has the lower unit price.
+    app.supplierQuotes.hct04 = [listing("far", "Far Co", 0.05, { shippingCost: 20 }), listing("near", "Near Co", 0.06)];
+    const shippingWins = app.vendorPlan("hct04", 100);
+    assert.deepEqual(shippingWins.allocations.map((row) => row.vendor), ["Near Co"]);
+    assert.match(shippingWins.decision, /Near Co covers the order/);
+    // Three vendors are needed: no pair covers the order, so stock is filled in order and the split is still reported.
+    app.supplierQuotes.hct04 = [listing("a", "A Co", 0.05, { available: 40 }), listing("b", "B Co", 0.06, { available: 40 }), listing("c", "C Co", 0.07, { available: 40 })];
+    const threeWay = app.vendorPlan("hct04", 100);
+    assert.deepEqual(threeWay.allocations.map((row) => row.qty), [40, 40, 20]);
+    assert.equal(threeWay.remaining, 0);
+    // Total stock is insufficient.
+    const tooLittle = app.vendorPlan("hct04", 500);
+    assert.equal(tooLittle.remaining, 380);
+    assert.match(tooLittle.decision, /remain unsourced/);
+    // A chosen vendor takes what its stock allows; only the remainder is optimised.
+    app.supplierQuotes.hct04 = [listing("a", "A Co", 0.05, { available: 500 }), listing("b", "B Co", 0.09, { available: 50 }), listing("c", "C Co", 0.07, { available: 500 })];
+    const chosen = app.vendorPlan("hct04", 120, "B Co");
+    assert.deepEqual(chosen.allocations.map((row) => [row.vendor, row.qty]), [["B Co", 50], ["A Co", 70]]);
+    // Unverified (Gemini-read) prices are called out wherever they steer a plan.
+    app.supplierQuotes.hct04 = [listing("g", "Web Co", 0.05, { priceSource: "gemini-web" })];
+    assert.match(app.vendorPlan("hct04", 10).decision, /read from the web by Gemini/);
+    // The optimiser matches an exhaustive search over every split, including tiers, MOQ, multiples, stock and shipping.
+    let seed = 12345;
+    const random = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    for (let trial = 0; trial < 300; trial += 1) {
+      const needed = 2 + Math.floor(random() * 58);
+      const vendorCount = 2 + Math.floor(random() * 3);
+      app.supplierQuotes.hct04 = Array.from({ length: vendorCount }, (_, index) => listing("v" + index, "V" + index, 0.02 + random() * 0.2, {
+        priceBreaks: [{ quantity: 1, unitPrice: 0.1 + random() * 0.2 }, { quantity: 10 + Math.floor(random() * 30), unitPrice: 0.02 + random() * 0.08 }],
+        shippingCost: random() < 0.5 ? 0 : Math.round(random() * 400) / 100,
+        available: random() < 0.5 ? 100000 : 5 + Math.floor(random() * 70),
+        minimumOrderQuantity: random() < 0.3 ? 1 + Math.floor(random() * 10) : 1,
+        orderMultiple: random() < 0.3 ? 1 + Math.floor(random() * 5) : 1,
+      }));
+      const pool = app.vendors("hct04", needed).filter((vendor) => vendor.manual);
+      const price = (vendor, quantity) => app.priceListing(vendor.raw, quantity);
+      const fits = (vendor, quote) => vendor.stock == null || quote.orderQty <= vendor.stock;
+      let bestSingle = Infinity;
+      let bestPair = Infinity;
+      for (const vendor of pool) { const quote = price(vendor, needed); if (fits(vendor, quote)) bestSingle = Math.min(bestSingle, quote.ext + quote.ship); }
+      for (let i = 0; i < pool.length; i += 1) for (let j = i + 1; j < pool.length; j += 1) for (let qa = 1; qa < needed; qa += 1) {
+        const a = price(pool[i], qa); const b = price(pool[j], needed - qa);
+        if (fits(pool[i], a) && fits(pool[j], b)) bestPair = Math.min(bestPair, a.ext + a.ship + b.ext + b.ship);
+      }
+      const expected = bestPair < Infinity && (bestSingle === Infinity || bestSingle - bestPair >= 1) ? bestPair : bestSingle;
+      const found = app.economicalPlan(pool, needed);
+      if (expected === Infinity) assert.equal(found, null, "trial " + trial);
+      else assert.ok(found && Math.abs(found.total - expected) < 1e-9, "trial " + trial + ": " + (found && found.total) + " vs " + expected);
+    }
     app.supplierQuotes.hct04 = originalHct04Suppliers;
 
     assert.equal(app.kitInventory("ece2031").prepared, 310);
@@ -259,6 +320,16 @@ test("the data model initializes and can create a persisted semester", async () 
     app.setState({ procurementProgress: "All" });
     app.setLineProgress("sp27:hct20", "purchased");
     assert.match(app.renderVals().list.summary.at(-1).val, /^1 \/ \d+$/);
+    // The same status shows in the kit's component list, with a progress summary.
+    app.setState({ view: "kit", kitId: "ece2031" });
+    const kitProgressView = app.renderVals().kit;
+    const kitHctRow = kitProgressView.rows.find((row) => row.name === "74HCT20");
+    if (kitHctRow) assert.equal(kitHctRow.progressSel, "purchased");
+    assert.match(kitProgressView.progress.label, /^\d+ of \d+ checked$/);
+    kitProgressView.rows[0].onProgress({ target: { value: "reviewed" }, stopPropagation() {} });
+    assert.equal(app.renderVals().kit.progress.label.split(" ")[0], String(1 + (kitHctRow ? 1 : 0)));
+    app.renderVals().kit.rows[0].onProgress({ target: { value: "unreviewed" }, stopPropagation() {} });
+    app.setState({ view: "list" });
     app.renderVals().list.clearOverrides();
     assert.equal(app.state.lineProgress["sp27:hct20"], "purchased");
     app.setLineProgress("sp27:hct20", "reviewed");
@@ -383,18 +454,21 @@ test("the data model initializes and can create a persisted semester", async () 
       description: "Logic Gates Quad 2-Input NAND Gate", category: "Logic Gates", packageName: "PDIP-14",
       productUrl: "https://www.mouser.com/ProductDetail/595-SN74HCT99N", datasheetUrl: "https://example.com/hct99.pdf",
       available: 1234, leadTime: "3 Days", unitPrice: 0.52,
-      priceBreaks: [{ quantity: 1, unitPrice: 0.52 }, { quantity: 100, unitPrice: 0.31 }], source: "Mouser Search API",
+      priceBreaks: [{ quantity: 1, unitPrice: 0.52 }, { quantity: 100, unitPrice: 0.31 }], source: "Gemini web lookup", unverifiedPrice: true,
     };
     const resistorCandidate = { ...nandCandidate, vendorSku: "603-CF14JT1K00", name: "CF14JT1K00", manufacturer: "Yageo", description: "Carbon Film Resistors 1kOhm 5% 1/4W", category: "Carbon Film Resistors", packageName: "", unitPrice: 0.02, priceBreaks: [{ quantity: 1, unitPrice: 0.02 }] };
-    dataSource.capabilities = { suppliers: { mouser: true, digikey: false, newark: true } };
+    dataSource.capabilities = { gemini: { configured: true } };
     dataSource.lookupVendorComponent = async (request) => { lookupCalls.push(request); return { candidates: [nandCandidate, resistorCandidate], message: "Mouser returned 2 priced matches." }; };
     app.openPicker("catalog", { create: true });
     app.setPickerLookup({ vendor: "Mouser", query: "SN74HCT99N" });
     await app.pickerLookup();
-    assert.deepEqual(lookupCalls, [{ vendor: "Mouser", query: "SN74HCT99N" }]);
+    assert.equal(lookupCalls.length, 1);
+    assert.deepEqual({ ...lookupCalls[0], categories: undefined }, { vendor: "Mouser", query: "SN74HCT99N", url: "", categories: undefined });
+    assert.ok(lookupCalls[0].categories.includes("Logic IC"));
     const pickerLookupVals = app.renderVals().picker;
     assert.equal(pickerLookupVals.candidates.length, 2);
-    assert.equal(pickerLookupVals.lookupVendors.find((vendor) => vendor.id === "DigiKey").label, "DigiKey (not configured)");
+    assert.ok(pickerLookupVals.vendorSuggestions.includes("Jameco") && pickerLookupVals.vendorSuggestions.includes("Mouser"));
+    assert.equal(pickerLookupVals.lookupLabel, "Look up with Gemini");
     pickerLookupVals.candidates[0].use();
     let filled = app.state.picker;
     assert.equal(filled.draft.name, "SN74HCT99N");
@@ -403,7 +477,9 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(filled.draft.base, "0.52");
     assert.equal(filled.listing.priceBreaks, "1 = 0.52\n100 = 0.31");
     assert.equal(filled.listing.compatibility, "unknown");
-    assert.match(filled.listing.source, /Mouser Search API · looked up \d{4}-\d{2}-\d{2}/);
+    assert.match(filled.listing.source, /Gemini web lookup · looked up \d{4}-\d{2}-\d{2}/);
+    assert.equal(filled.listing.priceSource, "gemini-web");
+    assert.equal(app.renderVals().picker.priceCheckStyle.includes("display:none"), false, "the price confirmation is offered");
     app.renderVals().picker.candidates.length === 0 || assert.fail("choosing a candidate clears the list");
     const changeTotal = app.changeLog.length;
     app.pickerCreate();
@@ -414,6 +490,8 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(lookedUpQuote.verified, false);
     assert.equal(lookedUpQuote.vendorSku, "595-SN74HCT99N");
     assert.equal(lookedUpQuote.requirementsPending, true);
+    assert.equal(lookedUpQuote.priceSource, "gemini-web");
+    assert.equal(app.vendors(lookedUp.id, 100).find((vendor) => vendor.vendor === "Mouser").unverifiedPrice, true);
     assert.match(lookedUpQuote.source, /looked up/);
     assert.equal(app.vendors(lookedUp.id, 100).find((vendor) => vendor.vendor === "Mouser").unit, 0.31);
     assert.equal(app.changeLog.length, changeTotal + 1);
@@ -421,6 +499,16 @@ test("the data model initializes and can create a persisted semester", async () 
     app.undoChange(app.changeLog[0].id);
     assert.ok(!app.catalog.some((part) => part.name === "SN74HCT99N"));
     assert.equal(app.supplierQuotes[lookedUp.id], undefined);
+    assert.equal(app.catalog.length, catalogCount);
+
+    // Confirming the prices on the product page clears the unverified tag.
+    app.openPicker("catalog", { create: true });
+    app.pickerApplyCandidate(nandCandidate);
+    app.setPickerListing({ priceChecked: true });
+    app.pickerCreate();
+    const checkedPart = app.catalog.find((part) => part.name === "SN74HCT99N");
+    assert.equal(app.supplierQuotes[checkedPart.id][0].priceSource, "");
+    app.undoChange(app.changeLog[0].id);
     assert.equal(app.catalog.length, catalogCount);
 
     // A broken link creates nothing; a second candidate is categorised as a resistor.
@@ -464,7 +552,8 @@ test("the data model initializes and can create a persisted semester", async () 
     // Pasted listing for a vendor without an API goes through the Gemini text parser.
     dataSource.parseNewComponentText = async () => ({ name: "LM358P", vendor: "Jameco", vendorSku: "23048", manufacturer: "TI", description: "Dual op amp", packageName: "PDIP-8", category: "Op-Amp", priceBreaks: [{ quantity: 1, unitPrice: 0.69 }], stock: 12, leadTime: "", message: "Gemini drafted this." });
     app.openPicker("catalog", { create: true });
-    app.setPickerLookup({ vendor: "Other", otherName: "Jameco", text: "LM358P dual op amp $0.69" });
+    app.setPickerLookup({ vendor: "Jameco", text: "LM358P dual op amp $0.69" });
+    assert.equal(app.renderVals().picker.lookupLabel, "Fill from pasted text");
     await app.pickerLookup();
     assert.equal(app.state.picker.draft.cat, "Op-Amp");
     assert.equal(app.state.picker.listing.vendor, "Jameco");
@@ -494,22 +583,23 @@ test("the data model initializes and can create a persisted semester", async () 
 
     // Typing a vendor name for a pasted listing updates both the lookup and the saved listing in one write.
     app.openPicker("catalog", { create: true });
-    app.setPickerLookup({ vendor: "Other" });
-    app.renderVals().picker.onLookupOtherName({ target: { value: "Jameco" } });
-    assert.equal(app.state.picker.lookup.otherName, "Jameco");
+    app.renderVals().picker.onLookupVendor({ target: { value: "Jameco" } });
+    assert.equal(app.state.picker.lookup.vendor, "Jameco");
     assert.equal(app.state.picker.listing.vendor, "Jameco");
-    assert.equal(app.renderVals().picker.lookupQueryLabel, "Part number, vendor SKU or keyword");
-    app.setPickerLookup({ vendor: "DigiKey" });
-    assert.equal(app.renderVals().picker.lookupQueryLabel, "Exact part number or DigiKey SKU");
     app.closePicker();
 
     // No backend, an old backend, and an unconfigured vendor each explain themselves.
     app.openPicker("catalog", { create: true });
     app.setPickerLookup({ vendor: "DigiKey", query: "X" });
+    dataSource.capabilities = { gemini: { configured: false } };
     lookupCalls.length = 0;
     await app.pickerLookup();
-    assert.match(app.state.picker.lookup.message, /not configured/);
+    assert.match(app.state.picker.lookup.message, /Gemini is not connected/);
     assert.equal(lookupCalls.length, 0);
+    dataSource.capabilities = { gemini: { configured: true } };
+    app.setPickerLookup({ vendor: "", query: "", url: "" });
+    await app.pickerLookup();
+    assert.match(app.state.picker.lookup.message, /Enter a part number/);
     app.setPickerLookup({ vendor: "Mouser", query: "X" });
     dataSource.lookupVendorComponent = async () => { throw Object.assign(new Error("That LabKit action is not supported."), { code: "UNKNOWN_ACTION" }); };
     await app.pickerLookup();
@@ -534,6 +624,143 @@ test("the data model initializes and can create a persisted semester", async () 
     delete dataSource.lookupVendorComponent;
     delete dataSource.parseNewComponentText;
     delete dataSource.capabilities;
+
+    // Vendor for a semester: line pin > semester vendor > policy; vendors without a listing fall back and say so.
+    const hct00Quotes = app.supplierQuotes.hct00;
+    const hct00Label = app.map.hct00.name;
+    const vendorListing = (id, vendor, unit, extra = {}) => ({
+      id, vendor, manual: true, productUrl: "https://example.com/" + id, priceBreaks: [{ quantity: 1, unitPrice: unit }],
+      shippingCost: 0, available: 100000, leadTime: "3 days", domestic: true, meetsRequirements: true, ...extra,
+    });
+    app.supplierQuotes.hct00 = [vendorListing("jam", "Jameco Test", 0.05), vendorListing("mou", "Mouser Test", 0.1)];
+    app.setState({ scope: "semester", semesterId: "sp27", view: "list", procurementCategory: "All", procurementKit: "All", procurementProgress: "All" });
+    const procurementRow = () => app.renderVals().list.rows.find((row) => row.name === hct00Label);
+    assert.match(procurementRow().decision, /Jameco Test covers/);
+    assert.ok(app.renderVals().list.semesterVendors.some((option) => option.id === "Mouser Test" && /lists \d+ of \d+ lines/.test(option.label)));
+    app.renderVals().list.onSemesterVendor({ target: { value: "Mouser Test" } });
+    assert.equal(app.state.semesterVendor.sp27, "Mouser Test");
+    assert.match(procurementRow().decision, /Mouser Test covers/);
+    assert.equal(procurementRow().vendorSel, "auto");
+    assert.equal(procurementRow().vendorOpts[0].label, "Semester vendor · Mouser Test");
+    app.setVendorChoice("sp27:hct00", "Jameco Test");
+    assert.match(procurementRow().decision, /Jameco Test covers/, "a line pin beats the semester vendor");
+    app.setVendorChoice("sp27:hct00", "auto");
+    app.renderVals().list.clearOverrides();
+    assert.equal(app.state.semesterVendor.sp27, "Mouser Test", "Clear pins leaves the semester vendor alone");
+    app.setSubstituteChoice("sp27:hct20", "hct20", approvedAlternative.id);
+    app.setSemesterVendor("sp27", "Nobody Co");
+    assert.match(procurementRow().decision, /No Nobody Co listing for this part, so the recommended vendor is used/);
+    app.undoChange(app.changeLog.find((change) => change.entity === "semester-vendor" && !change.undoneAt).id);
+    assert.equal(app.state.semesterVendor.sp27, "Mouser Test");
+
+    // Bulk tab part: something sp27 really needs to order, with the vendor listings replaced for the test.
+    const bulkPart = app.catalog.find((part) => !part.alternativeFor && app.termNeed(part.id, ["sp27"]) > 2);
+    assert.ok(bulkPart, "sp27 needs several pieces of at least one part");
+    const bulkNeed = app.termNeed(bulkPart.id, ["sp27"]);
+    const bulkLabel = bulkPart.name;
+    const bulkQuotes = app.supplierQuotes[bulkPart.id];
+    const bulkKit = app.kits.find((kit) => app.kitItemsForTerm(kit, "sp27").some((item) => item.p === bulkPart.id));
+    // Bulk tab: a short-stocked cheap vendor produces a flagged split, a saved note, and the same plan in the created order.
+    app.setSemesterVendor("sp27", "auto");
+    const jamecoStock = Math.max(1, Math.floor(bulkNeed / 2));
+    app.supplierQuotes[bulkPart.id] = [vendorListing("jam", "Jameco Test", 0.01, { available: jamecoStock }), vendorListing("mou", "Mouser Test", 5)];
+    app.setState({ scope: "global", gview: "combine", combine: { sp27: true } });
+    let bulk = app.renderVals().comb;
+    let bulkRow = bulk.rows.find((row) => row.name === bulkLabel);
+    assert.equal(bulkRow.multi, true);
+    assert.equal(bulkRow.multiText, "Buying from 2 vendors: " + jamecoStock + " from Jameco Test + " + (bulkNeed - jamecoStock) + " from Mouser Test");
+    assert.equal(bulk.rows.length, Number(bulk.footLabel.match(/^(\d+) shown/)[1]), "no cap on the rows shown");
+    bulkRow.onNote({ target: { value: "Jameco only had one left" } });
+    assert.equal(app.state.combineNotes[bulkPart.id], "Jameco only had one left");
+    app.createCombinedOrder(["sp27"]);
+    assert.ok(app.orderDraft, "the combined order was created");
+    const bulkLines = app.orderDraft.lines.filter((line) => line[0] === bulkPart.id);
+    assert.deepEqual(bulkLines.map((line) => line[3]).sort(), ["Jameco Test", "Mouser Test"]);
+    assert.match(app.orderDraft.notes, /\[Multiple vendors\]/);
+    assert.match(app.orderDraft.notes, /Note: Jameco only had one left/);
+    app.orderDraft = null;
+    app.setState({ orderForm: false });
+    // A vendor minimum above the quantity needed is priced, explained, and written into the order line as the quantity to buy.
+    app.supplierQuotes[bulkPart.id] = [vendorListing("min", "Minimum Co", 0.1, { minimumOrderQuantity: bulkNeed + 5 })];
+    const roundedPlan = app.vendorPlan(bulkPart.id, bulkNeed);
+    assert.equal(roundedPlan.allocations[0].qty, bulkNeed);
+    assert.equal(roundedPlan.allocations[0].orderQty, bulkNeed + 5);
+    assert.ok(Math.abs(roundedPlan.total - (bulkNeed + 5) * 0.1) < 1e-9);
+    assert.match(roundedPlan.decision, new RegExp("rounds up to " + (bulkNeed + 5) + " from Minimum Co \\(" + bulkNeed + " needed\\)"));
+    app.createCombinedOrder(["sp27"]);
+    assert.equal(app.orderDraft.lines.find((line) => line[0] === bulkPart.id)[1], bulkNeed + 5);
+    app.orderDraft = null;
+    app.setState({ orderForm: false });
+    // A semester vendor chosen for the bulk purchase is honoured by both the review table and the order.
+    app.supplierQuotes[bulkPart.id] = [vendorListing("jam", "Jameco Test", 0.05), vendorListing("mou", "Mouser Test", 0.1)];
+    app.setSemesterVendor("sp27", "Mouser Test");
+    bulkRow = app.renderVals().comb.rows.find((row) => row.name === bulkLabel);
+    assert.equal(bulkRow.vendorOpts[0].label, "Use Mouser Test");
+    assert.equal(bulkRow.multi, false);
+    app.createCombinedOrder(["sp27"]);
+    assert.deepEqual(app.orderDraft.lines.filter((line) => line[0] === bulkPart.id).map((line) => line[3]), ["Mouser Test"]);
+    app.orderDraft = null;
+    app.setState({ orderForm: false });
+    app.setSemesterVendor("sp27", "auto");
+
+    // Review checkbox: Procurement, kit list and bulk tab share one status.
+    const bulkProcurementRow = () => app.renderVals().list.rows.find((row) => row.name === bulkLabel);
+    app.setState({ scope: "semester", semesterId: "sp27", view: "list" });
+    assert.equal(bulkProcurementRow().reviewed, false);
+    bulkProcurementRow().onReview({ stopPropagation() {} });
+    assert.equal(app.state.lineProgress["sp27:" + bulkPart.id], "reviewed");
+    assert.equal(bulkProcurementRow().reviewed, true);
+    app.setState({ view: "kit", kitId: bulkKit.id });
+    assert.equal(app.renderVals().kit.rows.find((row) => row.name === bulkLabel).reviewed, true);
+    app.setState({ view: "list" });
+    bulkProcurementRow().onReview({ stopPropagation() {} });
+    assert.equal(("sp27:" + bulkPart.id) in app.state.lineProgress, false);
+    app.setLineProgress("sp27:" + bulkPart.id, "purchased");
+    window.confirm = () => false;
+    bulkProcurementRow().onReview({ stopPropagation() {} });
+    assert.equal(app.state.lineProgress["sp27:" + bulkPart.id], "purchased", "declining the prompt keeps a purchased line");
+    window.confirm = () => true;
+    bulkProcurementRow().onReview({ stopPropagation() {} });
+    assert.equal(("sp27:" + bulkPart.id) in app.state.lineProgress, false);
+    app.setState({ scope: "global", gview: "combine", combine: { sp27: true, fa26: true } });
+    const reviewCount = app.changeLog.length;
+    const combinedReview = app.renderVals().comb.rows.find((row) => row.name === bulkLabel);
+    combinedReview.onReview({ stopPropagation() {} });
+    assert.equal(app.changeLog.length, reviewCount + 1, "one change covers every selected semester");
+    assert.equal(app.state.lineProgress["sp27:" + bulkPart.id], "reviewed");
+    assert.equal(app.renderVals().comb.rows.find((row) => row.name === bulkLabel).reviewed, true);
+    app.undoChange(app.changeLog[0].id);
+    assert.equal(("sp27:" + bulkPart.id) in app.state.lineProgress, false);
+    app.supplierQuotes.hct00 = hct00Quotes;
+    app.supplierQuotes[bulkPart.id] = bulkQuotes;
+    app.setState({ scope: "semester", semesterId: "sp27", view: "kits", gview: "home", combine: { fa26: true } });
+
+    // Every row key the new checkbox / vendor / note markup reads exists on the row view models.
+    const templateBody = (source, listName) => {
+      const start = source.indexOf('list="{{ ' + listName + ' }}"');
+      const open = source.indexOf(">", start) + 1;
+      let depth = 1;
+      let cursor = open;
+      while (depth > 0) {
+        const nextOpen = source.indexOf("<template", cursor);
+        const nextClose = source.indexOf("</template>", cursor);
+        if (nextClose < 0) break;
+        if (nextOpen >= 0 && nextOpen < nextClose) { depth += 1; cursor = nextOpen + 9; } else { depth -= 1; cursor = nextClose + 11; }
+      }
+      return source.slice(open, cursor - 11);
+    };
+    app.setState({ scope: "semester", semesterId: "sp27", view: "list" });
+    const listSample = app.renderVals().list.rows[0];
+    app.setState({ view: "kit", kitId: "ece2031" });
+    const kitSample = app.renderVals().kit.rows[0];
+    app.setState({ scope: "global", gview: "combine", combine: { sp27: true } });
+    const combSample = app.renderVals().comb.rows[0];
+    for (const [listName, sample] of [["list.rows", listSample], ["kit.rows", kitSample], ["comb.rows", combSample]]) {
+      const body = templateBody(html, listName);
+      assert.ok(body.length > 200, listName + " template found");
+      for (const [, key] of body.matchAll(/\{\{\s*r\.(\w+)\s*\}\}/g)) assert.ok(key in sample, listName + " rows are missing " + key);
+    }
+    app.setState({ scope: "semester", semesterId: "sp27", view: "kits", gview: "home", combine: { fa26: true } });
 
     // Every key the dialog markup reads exists on the view model.
     const pickerMarkup = html.match(/<!-- picker:start -->([\s\S]*?)<!-- picker:end -->/)[1];
@@ -880,6 +1107,8 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
     lineVendor: {},
     lineSubstitute: {},
     lineProgress: {},
+    semesterVendor: {},
+    combineNotes: {},
   });
   assert.deepEqual(requests[1].payload.snapshot.inventory, {
     components: {},
@@ -1204,10 +1433,18 @@ test("supplier and Gemini adapters normalize official API responses", async () =
   };
   const requests = [];
   let geminiText = '{"ok":true}';
+  let groundedStatus = 200;
+  let groundedBody = {
+    candidates: [{
+      content: { parts: [{ text: "Mouser lists SN74HCT20N (595-SN74HCT20N), PDIP-14, $0.52 at 1 and $0.31 at 100, 1500 in stock." }] },
+      groundingMetadata: { groundingChunks: [{ web: { uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc", title: "mouser.com" } }] },
+    }],
+  };
   const UrlFetchApp = {
     fetch(url, options) {
       requests.push({ url, options });
       let body;
+      let status = 200;
       if (url.includes("api.mouser.com")) {
         body = {
           SearchResults: {
@@ -1216,11 +1453,6 @@ test("supplier and Gemini adapters normalize official API responses", async () =
               ManufacturerPartNumber: "TEST-1",
               Manufacturer: "Test Parts",
               Description: "Bipolar through-hole capacitor",
-              Category: "Capacitors",
-              ProductAttributes: [
-                { AttributeName: "Mounting Style", AttributeValue: "Through Hole" },
-                { AttributeName: "Package / Case", AttributeValue: "Radial" },
-              ],
               Availability: "1,234 In Stock",
               Min: "5",
               Mult: "5",
@@ -1251,13 +1483,16 @@ test("supplier and Gemini adapters normalize official API responses", async () =
             }],
           },
         };
+      } else if (options && options.payload && JSON.parse(options.payload).tools) {
+        status = groundedStatus;
+        body = groundedStatus === 200 ? groundedBody : { error: { message: "Search grounding is not supported for this model" } };
       } else {
         body = {
           candidates: [{ content: { parts: [{ text: geminiText }] } }],
         };
       }
       return {
-        getResponseCode: () => 200,
+        getResponseCode: () => status,
         getContentText: () => JSON.stringify(body),
       };
     },
@@ -1306,27 +1541,69 @@ test("supplier and Gemini adapters normalize official API responses", async () =
   assert.equal(geminiPayload.generationConfig.responseMimeType, "application/json");
   assert.deepEqual(geminiPayload.generationConfig.responseSchema.required, ["ok"]);
 
-  // Vendor lookup for a component that does not exist yet.
+  // Vendor lookup for a component that does not exist yet now goes through Gemini's own web tools; no vendor API credentials are used.
   assert.deepEqual(api.configuredSuppliers_(), { mouser: true, digikey: false, newark: true });
-  assert.deepEqual(api.publicCapabilities_().suppliers, { mouser: true, digikey: false, newark: true });
-  const mouserLookup = api.lookupVendorComponent_({ payload: { vendor: "Mouser", query: "TEST-1" } });
-  assert.equal(mouserLookup.candidates.length, 1);
-  assert.deepEqual(
-    { ...mouserLookup.candidates[0], priceBreaks: undefined, source: undefined },
-    {
-      vendor: "Mouser", vendorSku: "595-TEST", name: "TEST-1", manufacturer: "Test Parts",
-      description: "Bipolar through-hole capacitor", category: "Capacitors", packageName: "Radial",
-      productUrl: "", datasheetUrl: "", available: 1234, leadTime: "3 Days", minimumOrderQuantity: 5,
-      unitPrice: 0.1, priceBreaks: undefined, source: undefined,
-    },
-  );
-  assert.equal(mouserLookup.candidates[0].priceBreaks.length, 2);
-  const newarkLookup = api.lookupVendorComponent_({ payload: { vendor: "Newark", query: "TEST-1" } });
-  assert.equal(newarkLookup.candidates[0].vendorSku, "12M-TEST");
-  assert.equal(newarkLookup.candidates[0].packageName, "", "missing vendor attributes read as empty, not as errors");
-  assert.throws(() => api.lookupVendorComponent_({ payload: { vendor: "DigiKey", query: "TEST-1" } }), (error) => error.code === "SUPPLIER_NOT_CONFIGURED");
-  assert.throws(() => api.lookupVendorComponent_({ payload: { vendor: "Amazon", query: "TEST-1" } }), (error) => error.code === "INVALID_INPUT");
-  assert.throws(() => api.lookupVendorComponent_({ payload: { vendor: "Mouser", query: "x".repeat(161) } }), (error) => error.code === "INVALID_INPUT");
+  assert.equal(api.publicCapabilities_().gemini.canReadVendorUrls, true);
+  const candidateJson = (overrides = {}) => JSON.stringify({
+    candidates: [{
+      name: "SN74HCT20N", vendorSku: "595-SN74HCT20N", manufacturer: "Texas Instruments", description: "Dual 4-input NAND gate",
+      packageName: "PDIP-14", category: "Logic IC", productUrl: "https://www.mouser.com/ProductDetail/595-SN74HCT20N",
+      datasheetUrl: "https://www.ti.com/lit/ds/symlink/sn74hct20.pdf", available: 1500, leadTime: "",
+      priceBreaks: [{ quantity: 100, unitPrice: 0.31 }, { quantity: 1, unitPrice: 0.52 }], ...overrides,
+    }],
+  });
+  const lookupRequestStart = requests.length;
+  geminiText = candidateJson();
+  const found = api.lookupVendorComponent_({ payload: { vendor: "Mouser", query: "SN74HCT20N", categories: ["Logic IC", "Op-Amp"] } });
+  const groundedRequest = JSON.parse(requests[lookupRequestStart].options.payload);
+  assert.deepEqual(groundedRequest.tools, [{ google_search: {} }]);
+  assert.equal(groundedRequest.generationConfig.responseSchema, undefined, "web tools are not combined with a JSON schema");
+  assert.ok(JSON.parse(requests[lookupRequestStart + 1].options.payload).generationConfig.responseSchema, "extraction uses a schema in its own request");
+  assert.equal(found.candidates.length, 1);
+  assert.equal(found.candidates[0].name, "SN74HCT20N");
+  assert.equal(found.candidates[0].vendor, "Mouser");
+  assert.equal(found.candidates[0].category, "Logic IC");
+  assert.deepEqual(found.candidates[0].priceBreaks, [{ quantity: 1, unitPrice: 0.52 }, { quantity: 100, unitPrice: 0.31 }]);
+  assert.equal(found.candidates[0].unverifiedPrice, true);
+  assert.equal(found.candidates[0].productUrl, "https://www.mouser.com/ProductDetail/595-SN74HCT20N", "a link on a cited vendor domain is kept");
+  assert.equal(found.candidates[0].datasheetUrl, "", "a link on a domain nobody cited is dropped, not trusted");
+  assert.match(found.message, /mouser\.com/);
+  assert.match(found.message, /read from the web by Gemini/);
+  // Google's grounding redirect links are never saved as a product link.
+  geminiText = candidateJson({ productUrl: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc" });
+  assert.equal(api.lookupVendorComponent_({ payload: { vendor: "Mouser", query: "SN74HCT20N" } }).candidates[0].productUrl, "");
+  // A page Gemini's URL tool really retrieved is accepted even on a domain the search never cited; a failed read is explained.
+  const typedLink = "https://www.jameco.com/z/LM358P";
+  groundedBody = {
+    candidates: [{
+      content: { parts: [{ text: "Jameco LM358P $0.69" }] },
+      urlContextMetadata: { urlMetadata: [{ retrievedUrl: typedLink, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" }] },
+    }],
+  };
+  geminiText = candidateJson({ name: "LM358P", productUrl: "" });
+  const typedStart = requests.length;
+  const fromPage = api.lookupVendorComponent_({ payload: { vendor: "Jameco", url: typedLink } });
+  assert.deepEqual(JSON.parse(requests[typedStart].options.payload).tools, [{ url_context: {} }, { google_search: {} }]);
+  assert.equal(fromPage.candidates[0].productUrl, typedLink, "a single candidate from the typed page keeps the typed link");
+  groundedBody = {
+    candidates: [{
+      content: { parts: [{ text: "Could not open the page" }] },
+      url_context_metadata: { url_metadata: [{ retrieved_url: typedLink, url_retrieval_status: "URL_RETRIEVAL_STATUS_ERROR" }] },
+    }],
+  };
+  assert.match(api.lookupVendorComponent_({ payload: { vendor: "Jameco", url: typedLink } }).message, /could not be read/);
+  // Unsupported model, missing key, and bad input each fail with a message the officer can act on.
+  groundedStatus = 400;
+  assert.throws(() => api.lookupVendorComponent_({ payload: { vendor: "Mouser", query: "X1" } }), (error) => error.code === "AI_UNAVAILABLE" && /gemini-2\.5-flash or newer/.test(error.message));
+  groundedStatus = 200;
+  const savedKey = properties.get("LABKIT_GEMINI_API_KEY");
+  properties.delete("LABKIT_GEMINI_API_KEY");
+  assert.throws(() => api.lookupVendorComponent_({ payload: { vendor: "Mouser", query: "X1" } }), (error) => error.code === "AI_NOT_CONFIGURED");
+  properties.set("LABKIT_GEMINI_API_KEY", savedKey);
+  assert.throws(() => api.lookupVendorComponent_({ payload: { vendor: "Mouser" } }), (error) => error.code === "INVALID_INPUT");
+  assert.throws(() => api.lookupVendorComponent_({ payload: { query: "x".repeat(161) } }), (error) => error.code === "INVALID_INPUT");
+  assert.throws(() => api.lookupVendorComponent_({ payload: { url: "http://insecure.example.com/p" } }), (error) => error.code === "INVALID_INPUT");
+  assert.equal(api.apiFailure_({ code: "AI_UNAVAILABLE", message: "x" }).error.code, "AI_UNAVAILABLE");
   assert.equal(api.apiFailure_({ code: "SUPPLIER_NOT_CONFIGURED", message: "not set" }).error.code, "SUPPLIER_NOT_CONFIGURED");
   assert.equal(api.apiFailure_({ code: "AI_NOT_CONFIGURED", message: "no key" }).error.code, "AI_NOT_CONFIGURED");
 
