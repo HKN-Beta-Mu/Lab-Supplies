@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.06\.16"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.06\.18"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -223,7 +223,9 @@ test("the data model initializes and can create a persisted semester", async () 
       pkg: "PDIP-14",
       note: "Officer verified as a compatible substitute.",
     });
-    assert.equal(approvedAlternative.alternativeFor, "hct20");
+    assert.equal(approvedAlternative.alternativeFor, undefined);
+    assert.deepEqual(app.alternativeOrigins(approvedAlternative.id).map((part) => part.id), ["hct20"]);
+    assert.equal(app.catalog.filter((part) => part.name === "CD74HCT20E").length, 1);
     app.supplierQuotes[approvedAlternative.id] = [{
       id: "digikey-alt",
       vendor: "DigiKey",
@@ -242,11 +244,148 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(substituteRow.sourceSel, approvedAlternative.id);
     assert.match(substituteRow.sourceNote, /approved replacement/i);
     assert.equal(substituteRow.url, "https://example.com/cd74hct20e");
+    assert.equal(substituteRow.progressSel, "unreviewed");
+    assert.deepEqual(substituteRow.progressOpts.map((option) => option.label), ["Unreviewed", "Reviewing", "Reviewed", "Purchased", "Received"]);
+    substituteRow.onProgress({ target: { value: "reviewing" }, stopPropagation() {} });
+    assert.equal(app.state.lineProgress["sp27:hct20"], "reviewing");
+    assert.equal(app.state.lineSubstitute["sp27:hct20"], approvedAlternative.id);
+    assert.equal(app.renderVals().list.rows.find((row) => row.name === "74HCT20").progressSel, "reviewing");
+    app.setLineProgress("sp27:hct20", "bogus");
+    assert.equal(app.state.lineProgress["sp27:hct20"], "reviewing");
+    app.renderVals().list.onProgressFilter({ target: { value: "purchased" } });
+    assert.equal(app.renderVals().list.rows.length, 0);
+    app.renderVals().list.onProgressFilter({ target: { value: "reviewing" } });
+    assert.deepEqual(app.renderVals().list.rows.map((row) => row.name), ["74HCT20"]);
+    app.setState({ procurementProgress: "All" });
+    app.setLineProgress("sp27:hct20", "purchased");
+    assert.match(app.renderVals().list.summary.at(-1).val, /^1 \/ \d+$/);
+    app.renderVals().list.clearOverrides();
+    assert.equal(app.state.lineProgress["sp27:hct20"], "purchased");
+    app.setLineProgress("sp27:hct20", "reviewed");
+    app.undoChange(app.changeLog.find((change) => change.entity === "line-progress").id);
+    assert.equal(app.state.lineProgress["sp27:hct20"], "purchased");
+    app.setLineProgress("sp27:hct20", "unreviewed");
+    assert.equal("sp27:hct20" in app.state.lineProgress, false);
+    app.setSubstituteChoice("sp27:hct20", "hct20", approvedAlternative.id);
     const wireOrderRow = app.renderVals().list.rows.find((row) => row.name === "Red Hookup Wire");
     assert.match(wireOrderRow.needed, /cuts \(\d+ spools?\)/);
     app.renderVals().list.onCategory({ target: { value: "Wire" } });
     assert.ok(app.renderVals().list.rows.every((row) => row.cat === "Wire"));
     app.setState({ procurementCategory: "All" });
+    // Shared component search, duplicate rules, and creation.
+    const catalogCount = app.catalog.length;
+    assert.ok(app.searchCatalog("74hct 20").some((part) => part.id === "hct20"));
+    assert.equal(app.findComponentMatches({ name: "  74hct20 " })[0].level, "exact");
+    assert.equal(app.findComponentMatches({ name: "74-HCT20" })[0].level, "similar");
+    const duplicate = app.createCatalogComponent({ name: "74hct20" });
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(duplicate.part.id, "hct20");
+    assert.equal(app.catalog.length, catalogCount);
+    const resistor47 = app.createCatalogComponent({ name: "47 kΩ Test Resistor", cat: "Passive R" });
+    assert.equal(resistor47.created, true);
+    const resistor47Point = app.createCatalogComponent({ name: "4.7 kΩ Test Resistor", cat: "Passive R" });
+    assert.equal(resistor47Point.created, true, "4.7 kΩ must not collide with 47 kΩ");
+    assert.equal(resistor47Point.matches[0].level, "similar");
+    app.undoChange(app.changeLog.find((change) => change.entity === "catalog").id);
+    app.undoChange(app.changeLog.find((change) => change.entity === "catalog" && !change.undoneAt).id);
+    assert.equal(app.catalog.length, catalogCount);
+
+    // Replacement picker: create-and-approve is a single undoable change; an exact name is never created twice.
+    app.openPicker("alternative", { originalId: "hct04" });
+    let picker = app.renderVals().picker;
+    assert.equal(picker.open, true);
+    assert.equal(picker.category, app.map.hct04.cat);
+    assert.equal(picker.results.find((row) => row.name === app.map.hct04.name).blocked, "This is the part being replaced");
+    const pickerFindVals = picker;
+    app.setPicker({ creating: true, note: "Same pinout" });
+    app.setPickerDraft({ name: app.map.hct00.name });
+    const pickerCreateVals = app.renderVals().picker;
+    assert.equal(pickerCreateVals.matches[0].levelLabel, "Already in the list");
+    assert.match(pickerCreateVals.createStyle, /pointer-events:none/);
+    app.pickerCreate();
+    assert.equal(app.catalog.length, catalogCount, "an exact duplicate is refused");
+    app.setPickerDraft({ name: "TestAlt-04" });
+    assert.equal(app.renderVals().picker.matches.length, 0);
+    const changeCount = app.changeLog.length;
+    app.pickerCreate();
+    const testAlt = app.catalog.find((part) => part.name === "TestAlt-04");
+    assert.ok(testAlt);
+    assert.equal(testAlt.cat, app.map.hct04.cat);
+    assert.equal(app.state.picker, null);
+    assert.equal(app.changeLog.length, changeCount + 1);
+    assert.equal(app.approvedAlternatives("hct04").find((alt) => alt.componentId === testAlt.id).note, "Same pinout");
+    app.undoChange(app.changeLog[0].id);
+    assert.ok(!app.catalog.some((part) => part.name === "TestAlt-04"));
+    assert.ok(!app.approvedAlternatives("hct04").some((alt) => alt.componentId === testAlt.id));
+
+    // Linking a component that already exists creates nothing and shares its stock once.
+    const donorRow = app.renderVals().list.rows.map((row) => app.catalog.find((part) => part.name === row.name))
+      .find((part) => part && !["hct00", "hct20"].includes(part.id));
+    assert.ok(donorRow, "procurement has another line to substitute");
+    const hct00Name = app.map.hct00.name;
+    app.openPicker("alternative", { originalId: donorRow.id });
+    app.setPicker({ query: hct00Name });
+    const linkRow = app.renderVals().picker.results.find((row) => row.name === hct00Name);
+    assert.ok(linkRow && !linkRow.blocked);
+    linkRow.use();
+    assert.equal(app.catalog.length, catalogCount);
+    assert.ok(app.approvedAlternatives(donorRow.id).some((alt) => alt.componentId === "hct00"));
+    assert.ok(app.alternativeOrigins("hct00").some((part) => part.id === donorRow.id));
+    assert.ok(app.saveApprovedAlternative(donorRow.id, { pn: hct00Name.toUpperCase() }).id === "hct00", "typed names link instead of duplicating");
+    assert.equal(app.catalog.length, catalogCount);
+    app.setState({ adjustInv: true });
+    const stockBefore = app.renderVals().list.rows.find((row) => row.name === hct00Name).onhand;
+    assert.notEqual(stockBefore, "—");
+    app.setSubstituteChoice("sp27:" + donorRow.id, donorRow.id, "hct00");
+    const stockRows = app.renderVals().list.rows.filter((row) => [hct00Name, donorRow.name].includes(row.name));
+    assert.equal(stockRows.filter((row) => row.onhand !== "—").length, 1, "captured stock is handed out once");
+    assert.equal(app.removeApprovedAlternative(donorRow.id, "hct00"), false, "cannot remove a replacement a semester still uses");
+    app.setSubstituteChoice("sp27:" + donorRow.id, donorRow.id, "original");
+    assert.equal(app.removeApprovedAlternative(donorRow.id, "hct00"), true);
+    assert.ok(!app.approvedAlternatives(donorRow.id).some((alt) => alt.componentId === "hct00"));
+    app.undoChange(app.changeLog[0].id);
+    assert.ok(app.approvedAlternatives(donorRow.id).some((alt) => alt.componentId === "hct00"));
+    app.undoChange(app.changeLog.find((change) => change.entity === "alternative-model" && !change.undoneAt).id);
+    app.setState({ adjustInv: false });
+
+    // Order form: same search, packaging stays selectable, and a new part is created through the same function.
+    app.openPicker("order");
+    app.setPicker({ query: "packaging" });
+    const bagRow = app.renderVals().picker.results.find((row) => row.name.startsWith("Packaging ·"));
+    assert.ok(bagRow, "packaging bags remain available for order lines");
+    bagRow.use();
+    assert.match(app.state.orderLinePart, /^bag:/);
+    app.openPicker("order", { create: true, name: "Order Created Part" });
+    app.pickerCreate();
+    const orderCreated = app.catalog.find((part) => part.name === "Order Created Part");
+    assert.equal(app.state.orderLinePart, orderCreated.id);
+    assert.equal(app.renderVals().ord.form.linePartLabel, "Order Created Part");
+    app.undoChange(app.changeLog.find((change) => change.entity === "catalog" && !change.undoneAt).id);
+
+    // Kit builder: the "+ Create" path adds the new component to the draft.
+    app.builderDraft = { kitId: "ece2031", items: [], purchase: 1 };
+    app.openPicker("kit", { create: true, name: "Kit Created Part" });
+    app.pickerCreate();
+    const kitCreated = app.catalog.find((part) => part.name === "Kit Created Part");
+    assert.deepEqual(app.builderDraft.items.map((item) => item.p), [kitCreated.id]);
+    app.undoChange(app.changeLog.find((change) => change.entity === "catalog" && !change.undoneAt).id);
+    app.builderDraft = null;
+    assert.equal(app.catalog.length, catalogCount);
+
+    // Every key the dialog markup reads exists on the view model.
+    const pickerMarkup = html.match(/<!-- picker:start -->([\s\S]*?)<!-- picker:end -->/)[1];
+    const pathOf = (root, path) => path.split(".").reduce((value, key) => (value == null ? undefined : value[key]), root);
+    for (const [, path] of pickerMarkup.matchAll(/\{\{\s*picker\.([\w.]+)\s*\}\}/g)) {
+      assert.notEqual(pathOf(pickerFindVals, path) ?? pathOf(pickerCreateVals, path), undefined, `picker.${path} is missing from the view model`);
+    }
+    for (const [, listName, alias, body] of pickerMarkup.matchAll(/list="\{\{\s*picker\.(\w+)\s*\}\}" as="(\w+)"[^>]*>([\s\S]*?)<\/template>/g)) {
+      const sample = (pickerFindVals[listName] || pickerCreateVals[listName] || [])[0];
+      if (typeof sample !== "object") continue;
+      for (const [, key] of body.matchAll(new RegExp(`\\{\\{\\s*${alias}\\.(\\w+)\\s*\\}\\}`, "g"))) {
+        assert.ok(key in sample, `${listName} items are missing ${key}`);
+      }
+    }
+    app.setState({ picker: null });
     app.createCombinedOrder(["sp27"]);
     const substituteOrderLine = app.orderDraft.lines.find((line) => line[4] === "hct20");
     assert.equal(substituteOrderLine[0], approvedAlternative.id);
@@ -577,6 +716,7 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
     vendorPolicy: "best",
     lineVendor: {},
     lineSubstitute: {},
+    lineProgress: {},
   });
   assert.deepEqual(requests[1].payload.snapshot.inventory, {
     components: {},

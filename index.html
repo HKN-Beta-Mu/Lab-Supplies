@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-  <meta name="labkit-build" content="2026.10.06.16">
+  <meta name="labkit-build" content="2026.10.06.18">
 <title>LabKit · Component Procurement</title>
 <link rel="stylesheet" href="./src/auth.css">
 <script type="module" src="./src/firebase.js"></script>
@@ -65,7 +65,7 @@
 
 <aside id="labkit-auth-session" class="labkit-auth-session" aria-label="Signed-in account" hidden>
   <span id="labkit-session-user"></span>
-  <span class="labkit-build-id">v2026.10.06.16</span>
+  <span class="labkit-build-id">v2026.10.06.18</span>
   <button id="labkit-session-sign-out" type="button">Sign out</button>
 </aside>
 
@@ -380,6 +380,7 @@
           <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
             <div class="field" style="width:175px"><label>Component type</label><select class="input" value="{{ list.category }}" onChange="{{ list.onCategory }}"><template data-dc-control="for" list="{{ list.categories }}" as="o" hint-placeholder-count="8"><option value="{{ o.id }}">{{ o.label }}</option></template></select></div>
             <div class="field" style="width:190px"><label>Needed by kit</label><select class="input" value="{{ list.kit }}" onChange="{{ list.onKit }}"><template data-dc-control="for" list="{{ list.kits }}" as="o" hint-placeholder-count="8"><option value="{{ o.id }}">{{ o.label }}</option></template></select></div>
+            <div class="field" style="width:160px"><label>Progress</label><select class="input" aria-label="Filter by progress" value="{{ list.progress }}" onChange="{{ list.onProgressFilter }}"><template data-dc-control="for" list="{{ list.progressFilters }}" as="o" hint-placeholder-count="6"><option value="{{ o.id }}">{{ o.label }}</option></template></select></div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--color-neutral-600)">
             <span>{{ list.overrideNote }}</span>
@@ -388,13 +389,14 @@
         </div>
         <table class="table">
           <thead><tr>
-            <th>Requirement / part to buy</th><th>Category</th><th style="text-align:right">Needed</th><th style="text-align:right">On hand</th>
+            <th>Requirement / part to buy</th><th>Progress</th><th>Category</th><th style="text-align:right">Needed</th><th style="text-align:right">On hand</th>
             <th style="text-align:right">To order</th><th>Needed for</th><th>Selected vendor</th><th>Source status</th><th style="text-align:right">Unit</th><th style="text-align:right">Landed total</th><th style="text-align:right">Lead</th>
           </tr></thead>
           <tbody>
             <template data-dc-control="for" list="{{ list.rows }}" as="r" hint-placeholder-count="12">
               <tr onClick="{{ r.open }}" style="cursor:pointer">
                 <td style="font-weight:600">{{ r.name }} <span style="{{ r.flagStyle }}">{{ r.flag }}</span><div onClick="{{ r.stop }}" style="margin-top:5px"><select value="{{ r.sourceSel }}" onChange="{{ r.onSource }}" style="{{ r.sourceStyle }}"><template data-dc-control="for" list="{{ r.sourceOpts }}" as="s" hint-placeholder-count="3"><option value="{{ s.id }}">{{ s.label }}</option></template></select></div><div style="font-size:10.5px;color:{{ r.sourceColor }};font-weight:600;max-width:330px;margin-top:3px">{{ r.sourceNote }}</div><div style="font-size:10.5px;color:var(--color-neutral-600);font-weight:400;max-width:330px">{{ r.basis }}</div></td>
+                <td onClick="{{ r.stop }}"><select aria-label="Progress for {{ r.name }}" value="{{ r.progressSel }}" onChange="{{ r.onProgress }}" style="{{ r.progressStyle }}"><template data-dc-control="for" list="{{ r.progressOpts }}" as="s" hint-placeholder-count="5"><option value="{{ s.id }}">{{ s.label }}</option></template></select></td>
                 <td style="color:var(--color-neutral-600)">{{ r.cat }}</td>
                 <td style="text-align:right">{{ r.needed }}</td>
                 <td style="text-align:right;color:var(--color-neutral-600)">{{ r.onhand }}</td>
@@ -936,29 +938,7 @@
               <template data-dc-control="for" list="{{ cat.cats }}" as="c" hint-placeholder-count="8"><option value="{{ c }}">{{ c }}</option></template>
             </select>
           </div>
-          <button class="btn btn-primary" onClick="{{ cat.toggleForm }}">{{ cat.formLabel }}</button>
-        </div>
-        <div style="{{ cat.formStyle }}">
-          <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:10px">New component</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
-            <div class="field"><label>Name / part number</label><input class="input" placeholder="e.g. 74HC00D or 4.7 kΩ 1%" value="{{ cat.np.name }}" onInput="{{ cat.onNpName }}"></div>
-            <div class="field"><label>Category</label>
-              <select class="input" value="{{ cat.np.cat }}" onChange="{{ cat.onNpCat }}">
-                <template data-dc-control="for" list="{{ cat.catsOnly }}" as="c" hint-placeholder-count="8"><option value="{{ c }}">{{ c }}</option></template>
-              </select>
-            </div>
-            <div class="field"><label>Manufacturer</label><input class="input" placeholder="e.g. Nexperia" value="{{ cat.np.mfr }}" onInput="{{ cat.onNpMfr }}"></div>
-            <div class="field"><label>Package</label><input class="input" placeholder="e.g. SOIC-14, Axial 1/4 W" value="{{ cat.np.pkg }}" onInput="{{ cat.onNpPkg }}"></div>
-            <div class="field"><label>Est. unit price @1</label><input class="input" placeholder="0.48" value="{{ cat.np.base }}" onInput="{{ cat.onNpBase }}"></div>
-          </div>
-          <div class="field" style="margin-top:12px"><label>What it does</label><input class="input" placeholder="Quad 2-input NAND, surface mount — for the SMD soldering lab" value="{{ cat.np.role }}" onInput="{{ cat.onNpRole }}"></div>
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:8px"><span class="tag tag-accent">{{ cat.dsHint }}</span><span style="font-size:11.5px;color:var(--color-neutral-600)">{{ cat.dsNote }}</span></div>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-secondary" onClick="{{ cat.toggleForm }}">Cancel</button>
-              <button class="btn btn-primary" onClick="{{ cat.save }}">Add to catalog</button>
-            </div>
-          </div>
+          <button class="btn btn-primary" onClick="{{ cat.openNew }}">+ New component</button>
         </div>
         <table class="table">
           <thead><tr><th>Component</th><th>Category</th><th>Manufacturer</th><th>Package</th><th style="text-align:right">Unit @100</th><th>Used in</th><th style="text-align:right">On hand</th></tr></thead>
@@ -1040,7 +1020,7 @@
           <div class="field" style="margin-top:12px"><label>Receipt URL (Google Drive, Dropbox, or other stored file)</label><input class="input" type="url" placeholder="https://drive.google.com/…" value="{{ ord.form.receiptUrl }}" onInput="{{ ord.form.onReceipt }}"></div>
           <div class="field" style="margin-top:10px"><label>Order notes / confirmation details</label><textarea class="input" rows="2" value="{{ ord.form.notes }}" onInput="{{ ord.form.onNotes }}"></textarea></div>
           <table class="table" style="margin-top:12px"><thead><tr><th>Part to buy</th><th>Vendor for this line</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit paid</th><th></th></tr></thead><tbody><template data-dc-control="for" list="{{ ord.form.lines }}" as="l" hint-placeholder-count="5"><tr><td><b>{{ l.name }}</b><div style="font-size:10px;color:var(--color-accent-700)">{{ l.requirement }}</div><a href="{{ l.url }}" target="_blank" rel="noopener noreferrer" style="{{ l.linkStyle }}">Buy / verify listing ↗</a></td><td style="min-width:170px"><input class="input" placeholder="Vendor" value="{{ l.vendor }}" onInput="{{ l.onVendor }}"></td><td style="text-align:right">{{ l.qty }}</td><td style="text-align:right">{{ l.unit }}</td><td style="text-align:right"><button class="btn btn-ghost" onClick="{{ l.remove }}">Remove</button></td></tr></template></tbody></table>
-          <div style="display:grid;grid-template-columns:1fr 110px 120px auto;gap:8px;align-items:end;margin-top:10px"><div class="field"><label>Add component</label><select class="input" value="{{ ord.form.linePart }}" onChange="{{ ord.form.onLinePart }}"><template data-dc-control="for" list="{{ ord.form.parts }}" as="p" hint-placeholder-count="10"><option value="{{ p.id }}">{{ p.name }}</option></template></select></div><div class="field"><label>Qty</label><input class="input" type="number" min="1" value="{{ ord.form.lineQty }}" onInput="{{ ord.form.onLineQty }}"></div><div class="field"><label>Unit price</label><input class="input" type="number" min="0" step="0.0001" value="{{ ord.form.lineUnit }}" onInput="{{ ord.form.onLineUnit }}"></div><button class="btn btn-secondary" onClick="{{ ord.form.addLine }}">Add line</button></div>
+          <div style="display:grid;grid-template-columns:1fr 110px 120px auto;gap:8px;align-items:end;margin-top:10px"><div class="field"><label>Add component</label><button type="button" class="input" onClick="{{ ord.form.openPicker }}" title="Search the component list, or add a new component" style="text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ord.form.linePartLabel }}</span><span style="color:var(--color-accent-700);font-weight:700;flex:none">Find / add ▾</span></button></div><div class="field"><label>Qty</label><input class="input" type="number" min="1" value="{{ ord.form.lineQty }}" onInput="{{ ord.form.onLineQty }}"></div><div class="field"><label>Unit price</label><input class="input" type="number" min="0" step="0.0001" value="{{ ord.form.lineUnit }}" onInput="{{ ord.form.onLineUnit }}"></div><button class="btn btn-secondary" onClick="{{ ord.form.addLine }}">Add line</button></div>
           <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn btn-primary" onClick="{{ ord.form.save }}">Save order</button></div>
         </div>
         <h4 style="margin:0 0 4px">Current packed stock available to planning</h4><div style="font-size:11.5px;color:var(--color-neutral-600);margin-bottom:9px">Leftovers live here as current inventory, not inside every semester record.</div><table class="table" style="margin-bottom:26px"><thead><tr><th>Kit</th><th>Status</th><th style="text-align:right">Prepared</th><th style="text-align:right">Sold</th><th style="text-align:right">Faulty</th><th style="text-align:right">Reserved</th><th style="text-align:right">Available</th></tr></thead><tbody><template data-dc-control="for" list="{{ ord.stock }}" as="r" hint-placeholder-count="7"><tr><td><b>{{ r.code }}</b><div style="font-size:10.5px;color:var(--color-neutral-600)">{{ r.name }}</div></td><td><span class="tag tag-outline">{{ r.status }}</span></td><td style="text-align:right">{{ r.prepared }}</td><td style="text-align:right">{{ r.sold }}</td><td style="text-align:right">{{ r.faulty }}</td><td style="text-align:right">{{ r.reserved }}</td><td style="text-align:right;font-weight:700">{{ r.available }}</td></tr></template></tbody></table>
@@ -1084,6 +1064,64 @@
 
     </div>
   </main>
+
+  <!-- picker:start -->
+  <sc-if value="{{ picker.open }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ picker.close }}" style="position:fixed;inset:0;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent);display:grid;place-items:center;padding:24px;z-index:55">
+      <div onClick="{{ picker.stop }}" role="dialog" aria-label="Find or add a component" style="width:min(720px,100%);max-height:90vh;overflow:auto;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:fadeup .15s ease">
+        <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:18px 22px;border-bottom:2px solid var(--color-divider)">
+          <div><div style="font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--color-accent-700);font-weight:800">Component list</div><h3 style="margin:5px 0 4px;font-size:22px">{{ picker.title }}</h3><div style="font-size:12px;color:var(--color-neutral-600);max-width:560px">{{ picker.intro }}</div></div>
+          <button class="btn btn-secondary btn-icon" aria-label="Close" onClick="{{ picker.close }}">✕</button>
+        </div>
+        <div style="padding:18px 22px">
+          <div style="{{ picker.showTabs }}"><button onClick="{{ picker.showFind }}" style="{{ picker.findTabStyle }}">Find in the list</button><button onClick="{{ picker.showCreate }}" style="{{ picker.createTabStyle }}">Create new</button></div>
+
+          <sc-if value="{{ picker.finding }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+              <div class="field" style="flex:1;min-width:220px"><label>Search</label><input class="input" placeholder="Name, part number, manufacturer, package, what it does…" value="{{ picker.query }}" onInput="{{ picker.onQuery }}"></div>
+              <div class="field" style="width:170px"><label>Category</label><select class="input" value="{{ picker.category }}" onChange="{{ picker.onCategory }}"><template data-dc-control="for" list="{{ picker.categories }}" as="c" hint-placeholder-count="8"><option value="{{ c }}">{{ c }}</option></template></select></div>
+            </div>
+            <div style="font-size:11.5px;color:var(--color-neutral-600);margin:10px 2px 6px">{{ picker.resultsNote }}</div>
+            <div style="max-height:340px;overflow:auto;border:1px solid var(--color-divider)">
+              <template data-dc-control="for" list="{{ picker.results }}" as="r" hint-placeholder-count="6">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid var(--color-divider);background:var(--color-surface)">
+                  <div style="min-width:0"><b style="font-size:13px">{{ r.name }}</b> <span class="tag tag-neutral">{{ r.cat }}</span><div style="font-size:11px;color:var(--color-neutral-600);margin-top:2px">{{ r.detail }}</div><div style="{{ r.metaStyle }}">{{ r.meta }}</div></div>
+                  <span style="{{ r.blockedStyle }}">{{ r.blocked }}</span><button class="btn btn-secondary" onClick="{{ r.use }}" style="{{ r.useStyle }}">{{ r.useLabel }}</button>
+                </div>
+              </template>
+            </div>
+            <div style="{{ picker.emptyStyle }}">{{ picker.emptyText }}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--color-neutral-700)"><span>Can’t find it? Make sure the part is really missing, then add it.</span><button class="btn btn-primary" onClick="{{ picker.createFromQuery }}">{{ picker.createFromQueryLabel }}</button></div>
+          </sc-if>
+
+          <sc-if value="{{ picker.creatingNow }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
+              <div class="field" style="grid-column:1/-1"><label>Name / part number</label><input class="input" placeholder="e.g. 74HC00D or 4.7 kΩ 1%" value="{{ picker.draft.name }}" onInput="{{ picker.onName }}"></div>
+              <div class="field"><label>Category</label><select class="input" value="{{ picker.formCategory }}" onChange="{{ picker.onCat }}"><template data-dc-control="for" list="{{ picker.formCategories }}" as="c" hint-placeholder-count="8"><option value="{{ c }}">{{ c }}</option></template></select></div>
+              <div class="field"><label>Manufacturer</label><input class="input" placeholder="e.g. Nexperia" value="{{ picker.draft.mfr }}" onInput="{{ picker.onMfr }}"></div>
+              <div class="field"><label>Package</label><input class="input" placeholder="e.g. SOIC-14, Axial 1/4 W" value="{{ picker.draft.pkg }}" onInput="{{ picker.onPkg }}"></div>
+              <div class="field"><label>Est. unit price @1</label><input class="input" placeholder="0.48" value="{{ picker.draft.base }}" onInput="{{ picker.onBase }}"></div>
+              <div class="field"><label>Datasheet link</label><input class="input" type="url" placeholder="https://…" value="{{ picker.draft.datasheetUrl }}" onInput="{{ picker.onDatasheet }}"></div>
+              <div class="field" style="grid-column:1/-1"><label>What it does</label><input class="input" placeholder="Quad 2-input NAND, surface mount — for the SMD soldering lab" value="{{ picker.draft.role }}" onInput="{{ picker.onRole }}"></div>
+            </div>
+            <div style="{{ picker.matchesStyle }}">
+              <div style="font-size:12.5px;font-weight:700;color:var(--color-accent-900);margin-bottom:8px">{{ picker.matchesHeadline }}</div>
+              <template data-dc-control="for" list="{{ picker.matches }}" as="m" hint-placeholder-count="3">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 10px;background:var(--color-bg);border:1px solid var(--color-divider);margin-bottom:6px">
+                  <div style="min-width:0"><b style="font-size:13px">{{ m.name }}</b> <span class="tag {{ m.levelClass }}">{{ m.levelLabel }}</span><div style="font-size:11px;color:var(--color-neutral-600);margin-top:2px">{{ m.cat }} · {{ m.detail }}</div><div style="font-size:11px;color:var(--color-neutral-700);margin-top:2px">{{ m.reason }}</div></div>
+                  <button class="btn btn-secondary" onClick="{{ m.use }}" style="{{ m.useStyle }}">{{ m.useLabel }}</button>
+                </div>
+              </template>
+            </div>
+            <div class="field" style="{{ picker.noteStyle }}"><label>Why is it a valid substitute? (saved with the replacement)</label><textarea class="input" rows="2" placeholder="Same pinout and ratings — verified against both datasheets" value="{{ picker.note }}" onInput="{{ picker.onNote }}"></textarea></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap"><span style="font-size:11.5px;color:var(--color-neutral-600);max-width:380px">{{ picker.dsNote }}</span><div style="display:flex;gap:8px"><button class="btn btn-secondary" onClick="{{ picker.close }}">Cancel</button><button class="btn btn-primary" onClick="{{ picker.create }}" style="{{ picker.createStyle }}">{{ picker.createLabel }}</button></div></div>
+          </sc-if>
+
+        </div>
+      </div>
+    </div>
+  </sc-if>
+  <!-- picker:end -->
 
   <sc-if value="{{ semesterForm.open }}" hint-placeholder-val="{{ false }}">
     <div onClick="{{ semesterForm.close }}" style="position:fixed;inset:0;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent);display:grid;place-items:center;padding:24px;z-index:90">
@@ -1240,14 +1278,9 @@
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px"><div><span class="tag tag-accent">Alternatives</span><span style="font-size:12px;color:var(--color-neutral-600);margin-left:8px">Imported candidates need approval; officer-verified equivalents are labeled separately.</span></div><button class="btn btn-primary" onClick="{{ modal.aiReplace }}">{{ modal.aiReplaceLabel }}</button></div>
             <div style="border-left:3px solid var(--color-accent);background:var(--color-accent-100);padding:10px 12px;margin-bottom:12px;font-size:11.5px;color:var(--color-accent-900)">{{ modal.aiReplacementNote }}</div>
             <div style="{{ modal.aiResultsStyle }}"><template data-dc-control="for" list="{{ modal.aiResults }}" as="r" hint-placeholder-count="4"><div style="border:1px solid var(--color-divider);background:var(--color-surface);padding:12px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:10px"><div><b>{{ r.partNumber }}</b><div style="font-size:11px;color:var(--color-neutral-600)">{{ r.manufacturer }} · {{ r.package }}</div></div><button class="btn btn-secondary" onClick="{{ r.approve }}">Review &amp; save</button></div><div style="font-size:12px;margin-top:7px">{{ r.reason }}</div><div style="font-size:11px;color:var(--color-accent-700);margin-top:4px">Verify: {{ r.risks }}</div><a href="{{ r.searchUrl }}" target="_blank" rel="noopener noreferrer" style="font-size:11px;font-weight:700;color:var(--color-accent-700);display:inline-block;margin-top:6px">Search datasheets and suppliers ↗</a></div></template></div>
-            <div style="border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);background:var(--color-surface);padding:13px;margin-bottom:14px">
-              <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:9px">Add an equivalent you have verified</div>
-              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-                <div class="field" style="width:170px"><label>Part number</label><input class="input" placeholder="EXCHIP2020" value="{{ modal.altDraft.pn }}" onInput="{{ modal.onAltPn }}"></div>
-                <div class="field" style="width:150px"><label>Manufacturer</label><input class="input" placeholder="Nexperia" value="{{ modal.altDraft.mfr }}" onInput="{{ modal.onAltMfr }}"></div>
-                <div class="field" style="flex:1;min-width:180px"><label>Note</label><input class="input" placeholder="Same pinout, verified in lab Spring 2025" value="{{ modal.altDraft.note }}" onInput="{{ modal.onAltNote }}"></div>
-                <button class="btn btn-primary" onClick="{{ modal.saveAlt }}">Save</button>
-              </div>
+            <div style="border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);background:var(--color-surface);padding:13px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+              <div style="max-width:560px"><div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:5px">Add a replacement you have verified</div><div style="font-size:12px;color:var(--color-neutral-700)">Search the component list for a part that can substitute for this one. If it is not listed yet, create it from the same screen; it joins the main component list, so it can also be used in kits and orders.</div></div>
+              <button class="btn btn-primary" onClick="{{ modal.openAltPicker }}">Find or add a replacement…</button>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
               <template data-dc-control="for" list="{{ modal.similar }}" as="s" hint-placeholder-count="3">
@@ -1256,7 +1289,7 @@
                   <div style="font-size:12px;color:var(--color-neutral-600);margin:3px 0 8px">{{ s.mfr }} · {{ s.pkg }}</div>
                   <div style="font-size:12px;color:var(--color-neutral-800)">{{ s.note }}</div>
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px"><b style="font-size:14px">{{ s.unit }}</b><span style="font-size:11px;color:var(--color-neutral-600)">{{ s.vendor }}</span></div>
-                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"><button class="btn btn-secondary" onClick="{{ s.openCatalog }}" style="{{ s.catalogStyle }}">Vendor links &amp; pricing</button><button class="btn btn-primary" onClick="{{ s.useInPlan }}" style="{{ s.useStyle }}">Use in {{ s.planLabel }}</button><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer" style="{{ s.linkStyle }}">Open reference ↗</a></div>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"><button class="btn btn-secondary" onClick="{{ s.openCatalog }}" style="{{ s.catalogStyle }}">Vendor links &amp; pricing</button><button class="btn btn-ghost" onClick="{{ s.remove }}" style="{{ s.removeStyle }}">Remove</button><button class="btn btn-primary" onClick="{{ s.useInPlan }}" style="{{ s.useStyle }}">Use in {{ s.planLabel }}</button><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer" style="{{ s.linkStyle }}">Open reference ↗</a></div>
                 </div>
               </template>
             </div>
@@ -1293,9 +1326,9 @@ class Component extends DCLogic {
       searchQuery:'', builderKitId:'ece2031', enroll:3700, pct:44, overrides:{}, toast:null,
       scope:'global', gview:'home', statusOv:{},
       metric:'kits_by_course', transform:'Raw', seasonFilter:'All', hidden:{},
-      combine:{fa26:true}, vendorPolicy:'best', lineVendor:{}, lineSubstitute:{}, procurementCategory:'All', procurementKit:'All', combineCategory:'All', combineKit:'All',
-      catQuery:'', catCat:'All', np:{name:'',cat:'Passive R',mfr:'',pkg:'',base:'',role:''},
-      alt:{pn:'',mfr:'',note:''}, orderOpen:null, trendsTable:false,
+      combine:{fa26:true}, vendorPolicy:'best', lineVendor:{}, lineSubstitute:{}, lineProgress:{}, procurementCategory:'All', procurementKit:'All', procurementProgress:'All', combineCategory:'All', combineKit:'All',
+      catQuery:'', catCat:'All', picker:null,
+      orderOpen:null, trendsTable:false,
       sidebarOpen:false,
       semesterForm:false, semesterDraft:{season:'Spring',year:2027},
       semesterNotes:'', semesterSuggestion:null, semesterSuggesting:false, semesterError:'',
@@ -1341,6 +1374,7 @@ class Component extends DCLogic {
         vendorPolicy:typeof shared.vendorPolicy==='string'?shared.vendorPolicy:this.state.vendorPolicy,
         lineVendor:shared.lineVendor&&typeof shared.lineVendor==='object'?shared.lineVendor:this.state.lineVendor,
         lineSubstitute:shared.lineSubstitute&&typeof shared.lineSubstitute==='object'?shared.lineSubstitute:this.state.lineSubstitute,
+        lineProgress:shared.lineProgress&&typeof shared.lineProgress==='object'?shared.lineProgress:this.state.lineProgress,
       };
     }
     if(Array.isArray(saved.terms)){
@@ -1423,7 +1457,7 @@ class Component extends DCLogic {
   persistData(){
     if(!window.LabKitDataSource)return;
     if(window.LabKitDataSource.kind==='apps-script'&&!this._dataHydrated)return;
-    const {toast,partId,modalTab,sidebarOpen,orderOpen,semesterForm,semesterSuggestion,semesterSuggesting,semesterError,quoteLoading,quoteMessage,historyPanel,kitForm,supplierFormOpen,supplierEditingId,supplierDraft,supplierAiBusy,supplierAiMessage,flagDraft,specDraftKey,specDraftValue,aiBusy,aiMessage,aiDescriptionDraft,aiReplacementResults,forecastAiBusy,forecastAiMessage,priceTestOpen,priceTestValues,...stableState}=this.state;
+    const {toast,partId,modalTab,sidebarOpen,orderOpen,semesterForm,semesterSuggestion,semesterSuggesting,semesterError,quoteLoading,quoteMessage,historyPanel,picker,kitForm,supplierFormOpen,supplierEditingId,supplierDraft,supplierAiBusy,supplierAiMessage,flagDraft,specDraftKey,specDraftValue,aiBusy,aiMessage,aiDescriptionDraft,aiReplacementResults,forecastAiBusy,forecastAiMessage,priceTestOpen,priceTestValues,...stableState}=this.state;
     window.LabKitDataSource.save({
       historicalDataVersion:this.historicalDataVersion,
       orderDataVersion:'real-orders-v1',
@@ -1662,6 +1696,7 @@ class Component extends DCLogic {
     this.catalog.forEach(p=>{if(!Array.isArray(p.flags))p.flags=[];if(String(p.note||'').includes('MISSING'))p.note='';if(p.id==='hct20'&&p.note==='No stock at Major Brands — needs alternative'){p.note='The original NXP 74HCT20N source is obsolete; TI CD74HCT20E is recorded as an approval candidate.';}if(p.lifecycleStatus==='discontinued'&&!p.flags.some(f=>String(f).toLowerCase()==='discontinued'))p.flags.unshift('Discontinued');if(p.id==='lta1000'&&p.note==='Discontinued — needs alternative'){p.note='DigiKey listed this part active on 2026-10-05; retain the alternative candidate as contingency and re-check before ordering.';if(!p.flags.includes('Source review'))p.flags.push('Source review');}if(p.id==='sh1a05'&&p.note==='Needs alternative'){p.note='Flagged as a supply risk in the 2026 purchasing review; re-check Jameco stock and obtain course approval before substituting.';if(!p.flags.includes('Supply risk'))p.flags.push('Supply risk');}});
     this._alts=this._alts||{};Object.entries(this._alts).forEach(([componentId,alternatives])=>(alternatives||[]).forEach(alternative=>this.ensureAlternativeCatalogEntry(componentId,alternative)));
     this.state.lineSubstitute=this.state.lineSubstitute||{};
+    this.state.lineProgress=this.state.lineProgress&&typeof this.state.lineProgress==='object'?this.state.lineProgress:{};
     const requireItem=(kitId,partId,qty,note)=>{const kit=this.kitMap[kitId];if(!kit)return;let item=(kit.items||[]).find(i=>i.p===partId);if(!item){item={p:partId,q:qty,note:note||''};kit.items.push(item);}else if(note&&!String(item.note||'').trim())item.note=note;};
     [['c100u',3],['c10u',2]].forEach(row=>requireItem('ece3741',row[0],row[1],'Must be electrolytic, bipolar.'));
     [['c100u',4],['c10u',2],['c1u',1]].forEach(row=>requireItem('ece3043',row[0],row[1],'Must be electrolytic, bipolar.'));
@@ -1732,6 +1767,7 @@ class Component extends DCLogic {
     if(c.entity==='alternative-model'){this.catalog=this.clone(c.before.catalog);this._alts=this.clone(c.before.alternatives);this.inventory=this.clone(c.before.inventory);this.supplierQuotes=this.clone(c.before.supplierQuotes);this.map={};this.catalog.forEach(p=>this.map[p.id]=p);}
     if(c.entity==='supplier-quotes')this.supplierQuotes=this.clone(c.before);
     if(c.entity==='vendor-choice')this.state.lineVendor=this.clone(c.before);
+    if(c.entity==='line-progress')this.state.lineProgress=this.clone(c.before);
     if(c.entity==='purchase-choice'){this.state.lineSubstitute=this.clone(c.before.lineSubstitute);this.state.lineVendor=this.clone(c.before.lineVendor);}
     if(c.entity==='terms'){this._terms=this.clone(c.before);this.termMap={};this._terms.forEach(t=>this.termMap[t.id]=t);}
     if(c.entity==='orders')this.orders=this.clone(c.before);
@@ -2058,6 +2094,70 @@ class Component extends DCLogic {
   addComponentSpec(id){const p=this.map[id],key=String(this.state.specDraftKey||'').trim(),value=String(this.state.specDraftValue||'').trim();if(!p||!key||!value){this.flash('Enter both a specification name and value');return;}const before=this.clone(this.catalog);p.specs=Array.isArray(p.specs)?p.specs:[];const found=p.specs.findIndex(row=>String(row[0]).toLowerCase()===key.toLowerCase());if(found>=0)p.specs[found]=[key.slice(0,120),value.slice(0,300)];else p.specs.push([key.slice(0,120),value.slice(0,300)]);this.recordChange('edit','catalog',id,before,this.catalog,'Saved '+key+' requirement for '+p.name);this.setState({specDraftKey:'',specDraftValue:''});}
   removeComponentSpec(id,index){const p=this.map[id];if(!p||!Array.isArray(p.specs)||!p.specs[index])return;const before=this.clone(this.catalog),label=p.specs[index][0];p.specs.splice(index,1);this.recordChange('edit','catalog',id,before,this.catalog,'Removed '+label+' requirement from '+p.name);this.forceUpdate();}
   setVendorChoice(key,value,summary){const before=this.clone(this.state.lineVendor||{}),next={...before};if(!value||value==='auto')delete next[key];else next[key]=value;this.recordChange('edit','vendor-choice',key,before,next,summary||(value?'Selected '+value:'Cleared vendor choice'));this.setState({lineVendor:next});}
+  componentTextKey(value){return String(value==null?'':value).normalize('NFKC').toLowerCase().replace(/\s+/g,' ').trim();}
+  componentLooseKey(value){return this.componentTextKey(value).replace(/[^\p{L}\p{N}]+/gu,'');}
+  // One search for every "add a component" surface: every word must appear in the name, category, manufacturer, package or description.
+  searchCatalog(query,{category='All',exclude=null,boost=null,limit=30}={}){
+    const terms=this.componentTextKey(query).split(' ').filter(Boolean),q=this.componentTextKey(query);
+    return this.catalog.filter(p=>(category==='All'||p.cat===category)&&!(exclude&&exclude(p))).map(p=>{
+      const name=this.componentTextKey(p.name),hay=[p.name,p.cat,p.mfr,p.pkg,p.role].map(x=>this.componentTextKey(x)).join(' ');
+      if(!terms.every(t=>hay.includes(t)))return null;
+      return{p,score:(q&&name===q?4:q&&name.startsWith(q)?3:q&&name.includes(q)?2:0)+(boost?boost(p)||0:0)};
+    }).filter(Boolean).sort((a,b)=>b.score-a.score).slice(0,limit).map(r=>r.p);
+  }
+  // Same name (case, spacing and Unicode-width only) is a duplicate. Punctuation-only differences and near-containment are only warnings, so 4.7 kΩ never collides with 47 kΩ.
+  findComponentMatches(draft,{limit=5}={}){
+    const name=this.componentTextKey(draft&&draft.name),loose=this.componentLooseKey(draft&&draft.name);if(!name)return[];
+    const found=[];
+    this.catalog.forEach(p=>{const pn=this.componentTextKey(p.name),pl=this.componentLooseKey(p.name);let level='',reason='';
+      if(pn===name){level='exact';reason='Same name';}
+      else if(loose&&pl===loose){level='similar';reason='Same name apart from punctuation or spacing';}
+      else if(loose.length>=4&&pl.length>=4&&(pl.includes(loose)||loose.includes(pl))){level='similar';reason='Name overlaps';}
+      if(level)found.push({part:p,level,reason});});
+    return found.sort((a,b)=>(a.level==='exact'?0:1)-(b.level==='exact'?0:1)).slice(0,limit);
+  }
+  // The only user-facing way a catalog component is created: Catalog, kit builder, order form and replacement flows all call it. (Seeded replacements are built at load time in ensureAlternativeCatalogEntry with deterministic ids.)
+  createCatalogComponent(data,{record=true,summary=''}={}){
+    const name=String(data&&data.name||'').trim().replace(/\s+/g,' ');
+    if(!name)return{error:'Give the component a name first'};
+    const matches=this.findComponentMatches({name}),exact=matches.find(m=>m.level==='exact');
+    if(exact)return{part:exact.part,created:false,duplicate:true,matches};
+    const before=record?this.clone(this.catalog):null,cat=String(data.cat||'').trim()||(this.catalog[0]&&this.catalog[0].cat)||'Other',pkg=String(data.pkg||'').trim()||'—',mfr=String(data.mfr||'').trim()||'Unspecified',price=parseFloat(data.base);
+    let id='u'+this.hash(name+Date.now()+this.catalog.length).toString(36);while(this.map[id])id+='x';
+    const part={id,name,cat,base:price>0?price:0.25,pkg,mfr,jameco:'',stock:0,role:String(data.role||'').trim()||(name+' — added manually.'),specs:[['Package',pkg],['Manufacturer',mfr]],note:'',flags:[]};
+    if(String(data.datasheetUrl||'').trim())part.ds=String(data.datasheetUrl).trim();
+    this.catalog.push(part);this.map[id]=part;
+    this.inventory.components[id]=this.inventory.components[id]||{onHand:0,reserved:0,location:'',countedAt:'',note:''};
+    this.supplierQuotes[id]=this.supplierQuotes[id]||[];
+    if(record)this.recordChange('create','catalog',id,before,this.catalog,summary||'Added '+name+' to the component catalog');
+    return{part,created:true,duplicate:false,matches};
+  }
+  openPicker(mode,{originalId='',create=false,name=''}={}){
+    const original=originalId&&this.map[originalId]||null,likeOriginal=mode==='alternative'&&original;
+    this.setState({picker:{mode,originalId:original?original.id:'',query:'',category:likeOriginal?original.cat:'All',creating:mode==='catalog'||Boolean(create),note:'',draft:{name,cat:original?original.cat:'',mfr:'',pkg:likeOriginal&&original.pkg!=='—'?original.pkg:'',base:likeOriginal&&original.base?String(original.base):'',role:'',datasheetUrl:''}}});
+  }
+  closePicker(){this.setState({picker:null});}
+  setPicker(patch){if(this.state.picker)this.setState({picker:{...this.state.picker,...patch}});}
+  setPickerDraft(patch){const P=this.state.picker;if(P)this.setState({picker:{...P,draft:{...P.draft,...patch}}});}
+  // Every picker mode resolves to a catalog component and ends here.
+  pickerUse(part,{created=false}={}){
+    const P=this.state.picker;if(!P||!part)return;const how=created?' added to the component list and ':' ';
+    if(P.mode==='kit'){if(this.builderDraft&&this.builderDraft.items.find(i=>i.p===part.id)){this.flash(part.name+' is already in this kit');return;}this.addPartToBuilder(part.id);this.setState({picker:null});this.flash(part.name+how+'added to the kit');return;}
+    if(P.mode==='order'){this.setState({picker:null,orderLinePart:part.id});this.flash(part.name+how+'selected for the order');return;}
+    if(P.mode==='alternative'){const original=this.map[P.originalId],saved=this.saveApprovedAlternative(P.originalId,{componentId:part.id,note:P.note});if(!saved){this.flash('Could not approve '+part.name+' as a replacement');return;}this.setState({picker:null});this.flash(part.name+' approved as a replacement for '+original.name+' · choose it from Procurement');return;}
+    this.setState({picker:null});this.openPart(part.id);
+  }
+  pickerCreate(){
+    const P=this.state.picker;if(!P)return;const d=P.draft,name=String(d.name||'').trim();
+    if(!name){this.flash('Give the component a name first');return;}
+    const exact=this.findComponentMatches({name}).find(m=>m.level==='exact');
+    if(exact){this.flash(exact.part.name+' is already in the component list — use that one');return;}
+    if(P.mode==='alternative'){const saved=this.saveApprovedAlternative(P.originalId,{pn:name,cat:d.cat,mfr:d.mfr,pkg:d.pkg,base:d.base,role:d.role,datasheetUrl:d.datasheetUrl,note:P.note});if(!saved){this.flash('Could not add that replacement');return;}this.setState({picker:null});this.flash(name+' added to the component list and approved as a replacement');return;}
+    const made=this.createCatalogComponent(d);if(!made.part||made.duplicate){this.flash(made.error||'Could not add the component');return;}
+    if(P.mode==='catalog'){this.setState({picker:null,catQuery:''});this.flash(name+' added to the component list');return;}
+    this.pickerUse(made.part,{created:true});
+  }
+  addPartToBuilder(id){const bd=this.builderDraft;if(!bd||!this.map[id]||bd.items.find(i=>i.p===id))return false;bd.items.push({p:id,q:1,note:''});this.setState({builderAdd:'',builderComponent:''});return true;}
   ensureAlternativeCatalogEntry(originalId,alternative){
     const original=this.map[originalId];if(!original||!alternative||!String(alternative.pn||'').trim())return null;
     let part=alternative.componentId&&this.map[alternative.componentId];
@@ -2068,19 +2168,46 @@ class Component extends DCLogic {
     this.supplierQuotes[part.id]=this.supplierQuotes[part.id]||[];
     return part;
   }
+  // Approve a replacement. `componentId` links a component that is already in the catalog; otherwise a part number is matched against the
+  // catalog and only created (through createCatalogComponent) when nothing with that name exists. One recorded change, so Undo removes both.
   saveApprovedAlternative(originalId,data){
-    const original=this.map[originalId],pn=String(data&&data.pn||'').trim();if(!original||!pn)return null;
+    const original=this.map[originalId];if(!original||!data)return null;
+    const linked=data.componentId&&this.map[data.componentId]||null;if(linked&&linked.id===originalId)return null;
+    const typed=String(data.pn||'').trim();if(!linked&&!typed)return null;
     const before={catalog:this.clone(this.catalog),alternatives:this.clone(this._alts||{}),inventory:this.clone(this.inventory),supplierQuotes:this.clone(this.supplierQuotes)};
-    this._alts=this._alts||{};const list=this._alts[originalId]=this._alts[originalId]||[],existing=list.find(a=>String(a.pn||'').trim().toLowerCase()===pn.toLowerCase());
-    const alternative={...(existing||{}),pn,mfr:String(data.mfr||'Unspecified'),pkg:String(data.pkg||original.pkg||'—'),match:data.match||'yours',matchLabel:data.matchLabel||'Officer verified',note:String(data.note||'Added as an officer-verified equivalent.'),unit:'Price not checked',vendor:data.vendor||'Manual record',url:data.url||'',datasheetUrl:data.datasheetUrl||''};
+    this._alts=this._alts||{};const list=this._alts[originalId]=this._alts[originalId]||[];
+    const same=a=>(linked&&a.componentId===linked.id)||(!linked&&String(a.pn||'').trim().toLowerCase()===typed.toLowerCase());
+    let existing=list.find(same),target=linked||(existing&&existing.componentId&&this.map[existing.componentId])||null,created=false;
+    if(!target){
+      const match=this.findComponentMatches({name:typed}).find(m=>m.level==='exact');
+      if(match&&match.part.id===originalId)return null;
+      if(match)target=match.part;
+      else{const made=this.createCatalogComponent({name:typed,cat:data.cat||original.cat,mfr:data.mfr,pkg:data.pkg||original.pkg,base:data.base!=null&&data.base!==''?data.base:original.base,role:data.role||'Approved alternative for '+original.name+'. '+String(data.note||'Verify the saved compatibility note before ordering.'),datasheetUrl:data.datasheetUrl},{record:false});if(!made.part){this._alts=before.alternatives;return null;}target=made.part;created=made.created;}
+    }
+    if(!existing)existing=list.find(a=>a.componentId===target.id);
+    const alternative={...(existing||{}),pn:target.name,mfr:target.mfr||'Unspecified',pkg:target.pkg||original.pkg||'—',match:data.match||'yours',matchLabel:data.matchLabel||'Officer verified',note:String(data.note||'').trim()||'Added as an officer-verified equivalent.',unit:'Price not checked',vendor:data.vendor||'Manual record',url:data.url||'',datasheetUrl:data.datasheetUrl||target.ds||'',componentId:target.id};
     if(existing)Object.assign(existing,alternative);else list.push(alternative);
     const part=this.ensureAlternativeCatalogEntry(originalId,existing||alternative);
-    this.recordChange(existing?'edit':'create','alternative-model',originalId,before,{catalog:this.catalog,alternatives:this._alts,inventory:this.inventory,supplierQuotes:this.supplierQuotes},(existing?'Updated ':'Approved ')+pn+' as an alternative for '+original.name);
+    this.recordChange(existing?'edit':'create','alternative-model',originalId,before,{catalog:this.catalog,alternatives:this._alts,inventory:this.inventory,supplierQuotes:this.supplierQuotes},(existing?'Updated ':'Approved ')+target.name+' as an alternative for '+original.name+(created?' (new catalog component)':''));
     this.forceUpdate();return part;
+  }
+  alternativeOrigins(componentId){return Object.entries(this._alts||{}).filter(([,list])=>(list||[]).some(a=>a.componentId===componentId)).map(([id])=>this.map[id]).filter(Boolean);}
+  removeApprovedAlternative(originalId,componentId){
+    const original=this.map[originalId],list=(this._alts||{})[originalId]||[],index=list.findIndex(a=>a.componentId===componentId);if(!original||index<0)return false;
+    const inUse=Object.entries(this.state.lineSubstitute||{}).filter(([key,value])=>value===componentId&&key.endsWith(':'+originalId)).map(([key])=>key.startsWith('combined:')?'a combined order':(this.termMap[key.split(':')[0]]||{}).label||key);
+    if(inUse.length){this.flash('Still selected in '+[...new Set(inUse)].join(', ')+' — switch it back to the original part first');return false;}
+    const before={catalog:this.clone(this.catalog),alternatives:this.clone(this._alts||{}),inventory:this.clone(this.inventory),supplierQuotes:this.clone(this.supplierQuotes)},name=list[index].pn||(this.map[componentId]||{}).name||componentId;
+    list.splice(index,1);if(!list.length)delete this._alts[originalId];
+    this.recordChange('edit','alternative-model',originalId,before,{catalog:this.catalog,alternatives:this._alts,inventory:this.inventory,supplierQuotes:this.supplierQuotes},'Removed '+name+' as an alternative for '+original.name);
+    this.forceUpdate();return true;
   }
   approvedAlternatives(id){return((this._alts||{})[id]||[]).map(a=>({...a,part:a.componentId&&this.map[a.componentId]})).filter(a=>a.part);}
   purchaseComponent(key,requirementId){const selected=(this.state.lineSubstitute||{})[key],approved=this.approvedAlternatives(requirementId).find(a=>a.componentId===selected);return approved?approved.part:this.map[requirementId];}
   setSubstituteChoice(key,requirementId,value,summary){const before={lineSubstitute:this.clone(this.state.lineSubstitute||{}),lineVendor:this.clone(this.state.lineVendor||{})},next={...before.lineSubstitute},vendors={...before.lineVendor};if(!value||value==='original')delete next[key];else if(this.approvedAlternatives(requirementId).some(a=>a.componentId===value))next[key]=value;delete vendors[key];this.recordChange('edit','purchase-choice',key,before,{lineSubstitute:next,lineVendor:vendors},summary||'Changed the part selected for purchase');this.setState({lineSubstitute:next,lineVendor:vendors});}
+  lineProgressStyle(id){const look={unreviewed:['var(--color-surface)','var(--color-divider)','var(--color-neutral-700)'],reviewing:['var(--color-accent-100)','var(--color-accent)','var(--color-accent-900)'],reviewed:['var(--color-accent-2-100)','var(--color-accent-2-600)','var(--color-accent-2-900)'],purchased:['var(--color-accent-2-600)','var(--color-accent-2-600)','var(--color-bg)'],received:['var(--color-neutral-800)','var(--color-neutral-800)','var(--color-bg)']}[id]||['var(--color-surface)','var(--color-divider)','var(--color-text)'];return `border:1px solid ${look[1]};background:${look[0]};color:${look[2]};font-family:var(--font-body);font-size:11.5px;font-weight:600;padding:4px 6px;min-height:30px;cursor:pointer;max-width:130px`;}
+  get lineProgressOptions(){return [{id:'unreviewed',label:'Unreviewed'},{id:'reviewing',label:'Reviewing'},{id:'reviewed',label:'Reviewed'},{id:'purchased',label:'Purchased'},{id:'received',label:'Received'}];}
+  lineProgressOf(key){const id=(this.state.lineProgress||{})[key];return this.lineProgressOptions.some(o=>o.id===id)?id:'unreviewed';}
+  setLineProgress(key,value,summary){if(!this.lineProgressOptions.some(o=>o.id===value))return;const before=this.clone(this.state.lineProgress||{}),next={...before};if(value==='unreviewed')delete next[key];else next[key]=value;if(JSON.stringify(next)===JSON.stringify(before))return;this.recordChange('edit','line-progress',key,before,next,summary||'Changed component progress');this.setState({lineProgress:next});}
   applyAiDescription(id){const p=this.map[id],draft=String(this.state.aiDescriptionDraft||'').trim();if(!p||!draft)return;const before=this.clone(this.catalog);p.role=draft.slice(0,1000);this.recordChange('edit','catalog',id,before,this.catalog,'Applied AI-drafted description to '+p.name);this.setState({aiDescriptionDraft:'',aiMessage:'Description saved after officer review.'});}
   async generateAiDescription(id){const source=window.LabKitDataSource;if(!source||!source.generateComponentDescription){this.setState({aiMessage:'AI drafting is available after the Apps Script backend is deployed.'});return;}this.setState({aiBusy:'description',aiMessage:'Gemini is drafting from the saved specifications and kit requirements…'});try{const result=await source.generateComponentDescription({componentId:id});this.setState({aiBusy:'',aiDescriptionDraft:result.description||'',aiMessage:result.message||'Review the draft before saving.'});}catch(error){this.setState({aiBusy:'',aiMessage:error&&error.message||'Gemini description failed.'});}}
   async researchAiReplacements(id){const source=window.LabKitDataSource;if(!source||!source.findReplacementComponents){this.setState({aiMessage:'AI replacement research is available after the Apps Script backend is deployed.'});return;}this.setState({aiBusy:'replacements',aiMessage:'Gemini is comparing the component and every recorded kit requirement…',aiReplacementResults:[]});try{const result=await source.findReplacementComponents({componentId:id});this.setState({aiBusy:'',aiReplacementResults:result.candidates||[],aiMessage:result.message||'Research leads ready. Verify a datasheet before approval.'});}catch(error){this.setState({aiBusy:'',aiMessage:error&&error.message||'Gemini replacement research failed.'});}}
@@ -2354,21 +2481,22 @@ class Component extends DCLogic {
     if(!this.builderDraft||this.builderDraft.kitId!==bk.id){const v=this.versionFor(bk.id,S.builderTargetTermId==='future'?sem.id:S.builderTargetTermId);this.builderDraft={kitId:bk.id,name:bk.name,code:bk.code,purchase:bk.sp26.purchase,salePrice:v&&v.salePrice!=null?v.salePrice:'',bagTypeId:v&&v.bagTypeId||'',items:this.clone(v&&v.items||bk.items),sourceVersionId:v&&v.id,createNewVersion:S.builderTargetTermId==='future'};}
     const bd=this.builderDraft;
     const bItems=(bd.items||[]).map((it,idx)=>{ const p=this.map[it.p]||{id:it.p,name:'Missing component · '+it.p,cat:'Unlinked'}; return {id:p.id,name:p.name,cat:p.cat,qty:it.q,note:it.note||'',onNote:e=>{it.note=e.target.value;this.forceUpdate();},ext:this.map[it.p]?this.mu(this.best(it.p,it.q*bd.purchase).unit*it.q):'—',inc:()=>{it.q++;this.forceUpdate();},dec:()=>{if(it.q>1)it.q--;this.forceUpdate();},remove:()=>{bd.items.splice(idx,1);this.forceUpdate();},open:()=>{if(this.map[it.p])this.openPart(it.p);}}; });
-    const q=(S.builderAdd||'').toLowerCase();
-    const addPart=p=>{if(!p||bd.items.find(i=>i.p===p.id))return;bd.items.push({p:p.id,q:1,note:''});this.setState({builderAdd:'',builderComponent:''});};
-    const addResults=this.catalog.filter(p=>!bd.items.find(i=>i.p===p.id)).filter(p=>!q||p.name.toLowerCase().includes(q)||p.cat.toLowerCase().includes(q)||p.role.toLowerCase().includes(q)).slice(0,20).map(p=>({name:p.name,cat:p.cat,add:()=>addPart(p)}));
+    const addPart=p=>{if(p)this.addPartToBuilder(p.id);};
+    const addResults=this.searchCatalog(S.builderAdd,{exclude:p=>bd.items.find(i=>i.p===p.id),limit:20}).map(p=>({name:p.name,cat:p.cat,add:()=>addPart(p)}));
     const categories=['All',...Array.from(new Set(this.catalog.map(p=>p.cat)))],categoryParts=this.catalog.filter(p=>(S.builderCategory==='All'||p.cat===S.builderCategory)&&!bd.items.find(i=>i.p===p.id));
     const targets=[{id:'future',label:'Future semesters (latest default)'},...this.terms.filter(t=>this.status(t.id)==='Planning').map(t=>({id:t.id,label:t.label+' (Planning)'}))];
     const sourceBuilderVersion=this.kitVersions.find(v=>v.id===bd.sourceVersionId),builderComponentsChanged=!sourceBuilderVersion||!this.sameItems(sourceBuilderVersion.items,bd.items);
     const builderForecastTerm=S.builderTargetTermId==='future'?null:this.termMap[S.builderTargetTermId],builderForecast=builderForecastTerm?this.forecastForKit(bk,builderForecastTerm):{value:null},builderForecastNeed=builderForecastTerm?this.forecastOrderNeed(bk,builderForecastTerm,builderForecast.value):null;
     const builder={kitId:bk.id,kits:this.kits.map(k=>({id:k.id,label:k.code+' — '+k.name+(k.active===false?' (decommissioned)':'')})),onKit:e=>this.switchBuilderKit(e.target.value),name:bd.name,code:bd.code,purchase:bd.purchase,salePrice:bd.salePrice,bagTypeId:bk.individual?'':(bd.bagTypeId||''),bagTypes:bk.individual?[{id:'',label:'No bag required for individual items'}]:[{id:'',label:'Choose bag type…'},...this.bagTypes.map(b=>({id:b.id,label:b.name+(b.size?' · '+b.size:' · size needed')}))],onBagType:e=>{bd.bagTypeId=bk.individual?'':e.target.value;this.forceUpdate();},onName:e=>{bd.name=e.target.value;this.forceUpdate();},onCode:e=>{bd.code=e.target.value;this.forceUpdate();},onPurchase:e=>{bd.purchase=parseInt(e.target.value)||0;this.forceUpdate();},onSalePrice:e=>{bd.salePrice=e.target.value;this.forceUpdate();},target:S.builderTargetTermId,targets,onTarget:e=>{const id=e.target.value,targetTerm=id==='future'?null:this.termMap[id];if(targetTerm&&!this.confirmTermEdit(targetTerm,'edit its '+bk.code+' definition'))return;const sourceId=id==='future'?((this.terms.find(t=>this.status(t.id)==='Planning')||sem||{}).id):id,v=this.versionFor(bk.id,sourceId);this.builderDraft={...bd,salePrice:v&&v.salePrice!=null?v.salePrice:'',bagTypeId:bk.individual?'':(v&&v.bagTypeId||''),items:this.clone(v&&v.items||bk.items||[]),sourceVersionId:v&&v.id,createNewVersion:id==='future'};this.setState({builderTargetTermId:id,scope:id==='future'?'global':'semester',gview:id==='future'?'build':S.gview,view:id==='future'?S.view:'build',semesterId:id==='future'?S.semesterId:id});},versionNote:bd.createNewVersion?'Saving creates an explicit new version with its own component list, bag type, and selling price.':'Price-only edits update the assigned version; component or bag changes create a new version.',forecastLabel:builderForecast.value==null?'No semester forecast available':('Use forecast · '+this.num(builderForecast.value)+' demand / '+this.num(builderForecastNeed==null?builderForecast.value:builderForecastNeed)+' to build'),forecastStyle:builderForecast.value==null?'opacity:.45;pointer-events:none':'',applyForecast:()=>{if(!builderForecastTerm||builderForecast.value==null)return;this.applyForecastToPlan(builderForecastTerm.id,bk.id);bd.purchase=this.sales(bk,builderForecastTerm.id).purchase;this.forceUpdate();this.flash(bk.code+' forecast applied to '+builderForecastTerm.label);},items:bItems,category:S.builderCategory,categories,onCategory:e=>this.setState({builderCategory:e.target.value,builderComponent:''}),component:S.builderComponent,components:categoryParts.map(p=>({id:p.id,name:p.name+' · '+p.cat})),onComponent:e=>this.setState({builderComponent:e.target.value}),addSelected:()=>addPart(this.map[S.builderComponent]),addQuery:S.builderAdd||'',onAddQuery:e=>this.setState({builderAdd:e.target.value}),addResults,count:(bd.items||[]).length,estCost:this.m((bd.items||[]).reduce((t,it)=>t+(this.map[it.p]?this.best(it.p,this.componentPurchaseQuantity(it.p,it.q*bd.purchase)).ext:0),0)).replace('.00',''),fav:()=>this.toggleFavorite(bk),favLabel:bk.fav?'Favorited ✓':'Favorite this kit',saveLabel:bd.createNewVersion||builderComponentsChanged?'Save as new version':'Update current version',save:()=>this.saveKitVersion(),
-      newPart:()=>this.setState({scope:'global',gview:'catalog',catForm:true}),
-      newPartNote:'Component not in the catalog yet?'};
+      newPart:()=>this.openPicker('kit',{create:true}),
+      newPartNote:'Not in the component list? Search again, or'};
 
     // shopping list
     const listCanUseInventory=sem.inventoryApplied===true;
-    const listRows=[]; this.catalog.filter(p=>!p.alternativeFor).forEach(p=>{const uses=[],kitIds=[],rawNeed=this.kits.reduce((t,k)=>{const it=this.kitItemsForTerm(k,sem.id).find(i=>i.p===p.id),amount=it?it.q*this.sales(k).purchase:0;if(amount>0){uses.push(k.code+' · '+this.num(amount));kitIds.push(k.id);}return t+amount;},0),need=this.componentPurchaseQuantity(p.id,rawNeed);if(need<=0)return;const pinKey=sem.id+':'+p.id,buyPart=this.purchaseComponent(pinKey,p.id)||p,buyId=buyPart.id,selectedAlt=buyId!==p.id,discontinued=p.lifecycleStatus==='discontinued',onhand=listCanUseInventory&&S.adjustInv?(Number(allocatedComponents[buyId])||0):0,order=Math.max(0,need-onhand),pin=S.lineVendor[pinKey],plan=order>0&&(!discontinued||selectedAlt)?this.vendorPlan(buyId,order,pin):null,b=plan&&plan.selected||null,wire=this.wireCalculation(p.id,rawNeed),approved=this.approvedAlternatives(p.id);listRows.push({id:p.id,buyId,cat:buyPart.cat||p.cat,name:p.name,buyName:buyPart.name,selectedAlt,discontinued,approved,rawNeed,kitIds,need,onhand,order,b,plan,pinKey,pin,usedBy:uses.join(' · '),basis:wire?wire.label:'',wire,...flag(p)});});
-    const listCategories=['All',...new Set(listRows.map(r=>r.cat))],listKits=this.kits.filter(k=>listRows.some(r=>r.kitIds.includes(k.id))),visibleListRows=listRows.filter(r=>(S.procurementCategory==='All'||r.cat===S.procurementCategory)&&(S.procurementKit==='All'||r.kitIds.includes(S.procurementKit)));listRows.length=0;listRows.push(...visibleListRows);
+    const listRows=[]; this.catalog.filter(p=>!p.alternativeFor).forEach(p=>{const uses=[],kitIds=[],rawNeed=this.kits.reduce((t,k)=>{const it=this.kitItemsForTerm(k,sem.id).find(i=>i.p===p.id),amount=it?it.q*this.sales(k).purchase:0;if(amount>0){uses.push(k.code+' · '+this.num(amount));kitIds.push(k.id);}return t+amount;},0),need=this.componentPurchaseQuantity(p.id,rawNeed);if(need<=0)return;const pinKey=sem.id+':'+p.id,buyPart=this.purchaseComponent(pinKey,p.id)||p,buyId=buyPart.id,selectedAlt=buyId!==p.id,discontinued=p.lifecycleStatus==='discontinued',pin=S.lineVendor[pinKey],wire=this.wireCalculation(p.id,rawNeed),approved=this.approvedAlternatives(p.id);listRows.push({id:p.id,progress:this.lineProgressOf(pinKey),buyId,cat:buyPart.cat||p.cat,name:p.name,buyName:buyPart.name,selectedAlt,discontinued,approved,rawNeed,kitIds,need,pinKey,pin,usedBy:uses.join(' · '),basis:wire?wire.label:'',wire,...flag(p)});});
+    // Captured stock of a purchased part is handed out once: a line buying the part directly claims it before any line that substitutes it.
+    const stockClaimed=new Set();[...listRows.filter(r=>!r.selectedAlt),...listRows.filter(r=>r.selectedAlt)].forEach(r=>{const stock=listCanUseInventory&&S.adjustInv&&!stockClaimed.has(r.buyId)?(Number(allocatedComponents[r.buyId])||0):0;if(stock>0)stockClaimed.add(r.buyId);r.onhand=stock;r.order=Math.max(0,r.need-stock);r.plan=r.order>0&&(!r.discontinued||r.selectedAlt)?this.vendorPlan(r.buyId,r.order,r.pin):null;r.b=r.plan&&r.plan.selected||null;});
+    const listCategories=['All',...new Set(listRows.map(r=>r.cat))],listKits=this.kits.filter(k=>listRows.some(r=>r.kitIds.includes(k.id))),progressTotal=listRows.length,progressDone=listRows.filter(r=>r.progress==='purchased'||r.progress==='received').length,visibleListRows=listRows.filter(r=>(S.procurementCategory==='All'||r.cat===S.procurementCategory)&&(S.procurementKit==='All'||r.kitIds.includes(S.procurementKit))&&(S.procurementProgress==='All'||r.progress===S.procurementProgress));listRows.length=0;listRows.push(...visibleListRows);
     listRows.sort((a,b)=>(b.plan&&b.plan.total||0)-(a.plan&&a.plan.total||0));
     const splitTotal=listRows.reduce((t,r)=>t+(r.plan&&r.plan.total!=null?r.plan.total:0),0);
     const singleTotal=listRows.reduce((t,r)=>t+(r.order>0?this.bestDom(r.buyId,r.order).ext:0),0);
@@ -2383,10 +2511,11 @@ class Component extends DCLogic {
       {val:this.num(listRows.reduce((t,r)=>t+r.order,0)),label:'Units to order',color:'var(--color-text)'},
       {val:this.m(splitTotal).replace('.00',''),label:'Split-cart total',color:'var(--color-accent-700)'},
       {val:this.m(domOnly-splitTotal).replace('.00',''),label:'Saved vs. Jameco-only',color:'var(--color-accent-700)'},
+      {val:this.num(progressDone)+' / '+this.num(progressTotal),label:'Purchased or received',color:'var(--color-text)'},
     ];
     const overrides=new Set([...Object.keys(S.lineVendor||{}),...Object.keys(S.lineSubstitute||{})].filter(key=>key.startsWith(sem.id+':'))).size;
     const list={summary:listSummary,
-      bags:listBags,category:S.procurementCategory,kit:S.procurementKit,categories:listCategories.map(id=>({id,label:id==='All'?'All component types':id})),kits:[{id:'All',label:'All kits / items'},...listKits.map(k=>({id:k.id,label:k.code+' · '+k.name}))],onCategory:e=>this.setState({procurementCategory:e.target.value}),onKit:e=>this.setState({procurementKit:e.target.value}),rows:listRows.map(r=>{const choices=this.vendors(r.buyId,Math.max(1,r.order)).filter(v=>v.manual&&!v.referenceOnly&&Number.isFinite(v.unit)&&v.meetsRequirements!==false);return{name:r.name,cat:r.cat,basis:r.basis,usedBy:r.usedBy||'—',needed:r.wire?this.num(r.rawNeed)+' cuts ('+this.num(r.need)+' spool'+(r.need===1?'':'s')+')':this.num(r.need),onhand:r.onhand?this.num(r.onhand)+(r.wire?' spools':''):'—',order:this.num(r.order)+(r.wire?' spool'+(r.order===1?'':'s'):''),
+      bags:listBags,category:S.procurementCategory,kit:S.procurementKit,categories:listCategories.map(id=>({id,label:id==='All'?'All component types':id})),kits:[{id:'All',label:'All kits / items'},...listKits.map(k=>({id:k.id,label:k.code+' · '+k.name}))],onCategory:e=>this.setState({procurementCategory:e.target.value}),onKit:e=>this.setState({procurementKit:e.target.value}),progress:S.procurementProgress,progressFilters:[{id:'All',label:'All progress'},...this.lineProgressOptions],onProgressFilter:e=>this.setState({procurementProgress:e.target.value}),rows:listRows.map(r=>{const choices=this.vendors(r.buyId,Math.max(1,r.order)).filter(v=>v.manual&&!v.referenceOnly&&Number.isFinite(v.unit)&&v.meetsRequirements!==false);return{name:r.name,progressSel:r.progress,progressOpts:this.lineProgressOptions,progressStyle:this.lineProgressStyle(r.progress),onProgress:e=>{e.stopPropagation();const value=e.target.value,label=(this.lineProgressOptions.find(o=>o.id===value)||{}).label||value;this.setLineProgress(r.pinKey,value,'Marked '+r.name+' as '+label+' for '+sem.label);},cat:r.cat,basis:r.basis,usedBy:r.usedBy||'—',needed:r.wire?this.num(r.rawNeed)+' cuts ('+this.num(r.need)+' spool'+(r.need===1?'':'s')+')':this.num(r.need),onhand:r.onhand?this.num(r.onhand)+(r.wire?' spools':''):'—',order:this.num(r.order)+(r.wire?' spool'+(r.order===1?'':'s'):''),
         unit:r.b&&Number.isFinite(r.b.unit)?this.mu(r.b.unit):'—',landed:r.plan&&r.plan.total!=null?this.m(r.plan.total):'—',lead:r.b?(r.b.leadLabel||('~'+r.b.lead+'d')):'—',decision:r.plan?r.plan.decision:r.discontinued&&!r.selectedAlt?'Blocked: choose an approved replacement.':r.order>0?'Add and select a compatible vendor listing.':'No order required.',evidence:r.b?(r.b.meetsRequirements===true?'Compatible':r.b.meetsRequirements===false?'Incompatible':'Needs review'):'Add vendor',evidenceClass:r.b&&r.b.meetsRequirements===true?'tag-neutral':'tag-accent',url:r.b&&r.b.productUrl||'#',linkStyle:r.b&&r.b.productUrl?'display:block;font-size:10px;color:var(--color-accent-700);font-weight:700;margin-top:3px':'display:none',flag:r.flag,flagStyle:r.flagStyle,open:()=>this.openPart(r.buyId),
         sourceSel:r.selectedAlt?r.buyId:'original',sourceOpts:[{id:'original',label:(r.discontinued?'Discontinued original · ':'Original · ')+r.name},...r.approved.map(a=>({id:a.componentId,label:'Approved replacement · '+a.part.name}))],sourceStyle:`border:1px solid ${r.selectedAlt?'var(--color-accent)':r.discontinued?'var(--color-danger)':'var(--color-divider)'};background:${r.selectedAlt?'var(--color-accent-100)':'var(--color-surface)'};font-family:var(--font-body);font-size:11px;padding:4px 6px;max-width:285px;width:100%;cursor:pointer`,sourceNote:r.selectedAlt?'Buying '+r.buyName+' as an approved replacement for '+r.name:r.discontinued?'Original is discontinued · select an approved replacement before ordering':(r.approved.length?'Original selected · '+r.approved.length+' approved replacement'+(r.approved.length===1?'':'s')+' available':'Original part · no approved replacements'),sourceColor:r.selectedAlt?'var(--color-accent-700)':r.discontinued?'var(--color-danger)':'var(--color-neutral-600)',onSource:e=>{e.stopPropagation();const value=e.target.value;this.setSubstituteChoice(r.pinKey,r.id,value,(value==='original'?'Restored original '+r.name:'Selected '+(this.map[value]||{}).name+' instead of '+r.name)+' for '+sem.label);},
         vendorSel:r.pin||'auto',vendorOpts:[{id:'auto',label:'Recommended'},...choices.map(v=>({id:v.vendor,label:v.vendor+' · '+(v.landedKnown?this.m(v.landed)+' landed':this.m(v.ext)+' + shipping')+' · '+(v.stock==null?'stock ?':this.num(v.stock)+' left')+' · '+v.leadLabel}))],stop:e=>e.stopPropagation(),
@@ -2477,7 +2606,7 @@ class Component extends DCLogic {
         sparkBig:this.spark(mhist,600,120),histRows:mhist.slice().reverse().map((h,i,arr)=>{const prev=arr[i+1],chg=prev?Math.round((h.price/prev.price-1)*100):0;return{year:h.year,price:this.mu(h.price),chg:prev?(chg>=0?'+':'')+chg+'%':'—',color:chg>0?'var(--color-accent-700)':'var(--color-neutral-600)'};}),
         receipts:rcpts.map(r=>({date:r.date,vendor:r.vendor,po:r.po,qty:this.num(r.qty),unit:this.mu(r.unit),total:this.m(r.total),file:r.file,terms:r.terms,fileLabel:r.filed?'Receipt ↗':'Missing',go:e=>{e.stopPropagation();this.setState({partId:null,scope:'global',gview:'orders',orderOpen:r.po});}})),receiptNote:'Receipts are filed against the purchase order, not the part — one order can cover several semesters and every part on it links back here.',receiptsEmptyStyle:rcpts.length?'display:none':'font-size:13px;color:var(--color-neutral-600);padding:20px;text-align:center;border:1px dashed var(--color-divider);margin-top:12px',addReceipt:()=>this.addReceipt(),
         aiReplace:()=>this.researchAiReplacements(p.id),aiReplaceLabel:S.aiBusy==='replacements'?'Gemini researching…':'✨ Find replacement candidates with Gemini',aiReplacementNote:S.aiMessage||'Gemini uses saved specifications and every kit requirement. Results are research leads, not live availability or automatic approvals.',aiResultsStyle:(S.aiReplacementResults||[]).length?'margin-bottom:14px':'display:none',aiResults:(S.aiReplacementResults||[]).map(r=>({...r,searchUrl:'https://www.google.com/search?q='+encodeURIComponent((r.partNumber||'')+' '+(r.manufacturer||'')+' datasheet distributor'),approve:()=>this.approveAiReplacement(p.id,r)})),
-        altDraft:S.alt,onAltPn:e=>this.setState({alt:{...S.alt,pn:e.target.value}}),onAltMfr:e=>this.setState({alt:{...S.alt,mfr:e.target.value}}),onAltNote:e=>this.setState({alt:{...S.alt,note:e.target.value}}),saveAlt:()=>{if(!S.alt.pn){this.flash('Enter a part number');return;}const pn=S.alt.pn,part=this.saveApprovedAlternative(S.partId,{pn,mfr:S.alt.mfr||'Unspecified',pkg:p.pkg,match:'yours',matchLabel:'Officer verified',note:S.alt.note||'Added as an officer-verified equivalent.',vendor:'Manual record'});this.setState({alt:{pn:'',mfr:'',note:''}});if(part)this.flash(pn+' approved · add its vendor links and choose it from Procurement');},similar:[...(((this._alts||{})[S.partId])||[]).map(a=>({...a,matchStyle:'background:var(--color-neutral-200);color:var(--color-neutral-800)',linkStyle:a.url?'display:inline-block;font-size:11px;font-weight:700;color:var(--color-accent-700)':'display:none',catalogStyle:a.componentId&&this.map[a.componentId]?'font-size:10.5px;padding:4px 7px':'display:none',openCatalog:()=>{if(a.componentId&&this.map[a.componentId])this.openPart(a.componentId);},useStyle:modalPlanning&&a.componentId?'font-size:10.5px;padding:4px 7px':'display:none',planLabel:sem.label,useInPlan:()=>{if(!modalPlanning||!a.componentId)return;this.setSubstituteChoice(modalVendorKey,p.id,a.componentId,'Selected '+a.pn+' as the approved substitute for '+p.name+' in '+sem.label);this.flash(a.pn+' selected for '+sem.label);}})),...this.similar(S.partId).map(a=>({...a,catalogStyle:'display:none',useStyle:'display:none',planLabel:''}))]};
+        openAltPicker:()=>this.openPicker('alternative',{originalId:S.partId}),similar:[...(((this._alts||{})[S.partId])||[]).map(a=>({...a,matchStyle:'background:var(--color-neutral-200);color:var(--color-neutral-800)',linkStyle:a.url?'display:inline-block;font-size:11px;font-weight:700;color:var(--color-accent-700)':'display:none',removeStyle:a.componentId&&this.map[a.componentId]?'font-size:10.5px;padding:4px 7px;color:var(--color-neutral-600)':'display:none',remove:()=>{if(!a.componentId)return;if(!window.confirm('Remove '+a.pn+' as an approved alternative for '+p.name+'? It stays in the component list.'))return;if(this.removeApprovedAlternative(p.id,a.componentId))this.flash(a.pn+' is no longer an approved alternative');},catalogStyle:a.componentId&&this.map[a.componentId]?'font-size:10.5px;padding:4px 7px':'display:none',openCatalog:()=>{if(a.componentId&&this.map[a.componentId])this.openPart(a.componentId);},useStyle:modalPlanning&&a.componentId?'font-size:10.5px;padding:4px 7px':'display:none',planLabel:sem.label,useInPlan:()=>{if(!modalPlanning||!a.componentId)return;this.setSubstituteChoice(modalVendorKey,p.id,a.componentId,'Selected '+a.pn+' as the approved substitute for '+p.name+' in '+sem.label);this.flash(a.pn+' selected for '+sem.label);}})),...this.similar(S.partId).map(a=>({...a,removeStyle:'display:none',remove:()=>{},catalogStyle:'display:none',useStyle:'display:none',planLabel:''}))]};
     }
 
     // ── GLOBAL (all-semester) WORKSPACE ─────────────────────────────────────
@@ -2674,15 +2803,48 @@ class Component extends DCLogic {
     const cq=(S.catQuery||'').toLowerCase();
     const catRows=this.catalog.filter(p=>(S.catCat==='All'||p.cat===S.catCat)&&(!cq||p.name.toLowerCase().includes(cq)||p.cat.toLowerCase().includes(cq)||p.role.toLowerCase().includes(cq)||p.mfr.toLowerCase().includes(cq))).map(p=>{
       const u=this.usedInKits(p.id);
-      const original=p.alternativeFor&&this.map[p.alternativeFor];return {name:p.name,cat:p.cat,mfr:p.mfr,pkg:p.pkg,unit:this.mu(this.cheapest(p.id,100).unit),used:original?'Approved alternative for '+original.name:(u.length?u.map(x=>x.code).join(', '):'—'),stock:p.stock?this.num(p.stock):'—',...flag(p),open:()=>this.openPart(p.id)};
+      const originals=[p.alternativeFor&&this.map[p.alternativeFor],...this.alternativeOrigins(p.id)].filter((o,i,all)=>o&&all.indexOf(o)===i),altNote=originals.length?'Approved alternative for '+originals.map(o=>o.name).join(', '):'';return {name:p.name,cat:p.cat,mfr:p.mfr,pkg:p.pkg,unit:this.mu(this.cheapest(p.id,100).unit),used:altNote&&!u.length?altNote:(u.length?u.map(x=>x.code).join(', ')+(altNote?' · '+altNote:''):'—'),stock:p.stock?this.num(p.stock):'—',...flag(p),open:()=>this.openPart(p.id)};
     });
-    const np=S.np;
     const cat={query:S.catQuery,onQuery:e=>this.setState({catQuery:e.target.value}),cat:S.catCat,onCat:e=>this.setState({catCat:e.target.value}),cats,catsOnly:cats.slice(1),rows:catRows,
-      toggleForm:()=>this.setState({catForm:!S.catForm}),formLabel:S.catForm?'Close form':'+ New component',
-      formStyle:S.catForm?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);background:var(--color-surface);padding:16px;margin-bottom:20px':'display:none',
-      np,onNpName:e=>this.setState({np:{...np,name:e.target.value}}),onNpCat:e=>this.setState({np:{...np,cat:e.target.value}}),onNpMfr:e=>this.setState({np:{...np,mfr:e.target.value}}),onNpPkg:e=>this.setState({np:{...np,pkg:e.target.value}}),onNpBase:e=>this.setState({np:{...np,base:e.target.value}}),onNpRole:e=>this.setState({np:{...np,role:e.target.value}}),
-      dsHint:np.name?'Find datasheet for '+np.name:'Datasheet auto-lookup',dsNote:np.name?'Searches the manufacturer and distributors on save, then attaches the PDF.':'Type a part number and the datasheet is located for you.',
-      save:()=>{ if(!np.name){this.flash('Give the component a name first');return;} const before=this.clone(this.catalog),id='u'+this.hash(np.name+Date.now()).toString(36); const p={id,name:np.name,cat:np.cat,base:parseFloat(np.base)||0.25,pkg:np.pkg||'—',mfr:np.mfr||'Unspecified',jameco:'',stock:0,role:np.role||(np.name+' — added manually.'),specs:[['Package',np.pkg||'—'],['Manufacturer',np.mfr||'Unspecified']],note:''}; this.catalog.push(p); this.map[id]=p;this.inventory.components[id]={onHand:0,reserved:0,location:'',countedAt:'',note:''};this.recordChange('create','catalog',id,before,this.catalog,'Added '+p.name+' to the component catalog'); this.setState({np:{name:'',cat:np.cat,mfr:'',pkg:'',base:'',role:''},catForm:false,catQuery:''}); this.flash(p.name+' added to catalog'); }};
+      openNew:()=>this.openPicker('catalog',{create:true})};
+
+    // Shared "find or add a component" dialog: kit builder, order form, replacements and the Catalog all render this one view model.
+    const pk=S.picker,pickerOpen=Boolean(pk),P0=pk||{mode:'catalog',originalId:'',query:'',category:'All',creating:false,note:'',draft:{name:'',cat:'',mfr:'',pkg:'',base:'',role:'',datasheetUrl:''}};
+    const pickerOriginal=P0.originalId?this.map[P0.originalId]:null,pickerIsAlt=P0.mode==='alternative'&&Boolean(pickerOriginal),pickerCategories=[...new Set(this.catalog.map(x=>x.cat))];
+    const pickerKitCode=(this.kitMap[S.builderKitId]||{}).code||'this kit';
+    let pickerResults=[],pickerMatches=[];
+    if(pickerOpen){
+      const taken=new Set(pickerIsAlt?((this._alts||{})[pickerOriginal.id]||[]).map(a=>a.componentId):[]),draftItems=this.builderDraft&&this.builderDraft.items||[],originalPkg=pickerIsAlt?this.componentLooseKey(pickerOriginal.pkg):'';
+      const samePkg=x=>pickerIsAlt&&originalPkg&&x.pkg!=='—'&&this.componentLooseKey(x.pkg)===originalPkg;
+      const blockedReason=x=>!pickerIsAlt?'':x.id===pickerOriginal.id?'This is the part being replaced':taken.has(x.id)?'Already an approved replacement':'';
+      const detail=x=>[x.mfr,x.pkg].filter(v=>v&&v!=='—'&&v!=='Unspecified').join(' · ')||'No manufacturer or package recorded';
+      const useLabel={kit:'Add to kit',order:'Select',alternative:'Use as replacement',catalog:'Open'}[P0.mode]||'Use';
+      const useStyle=blocked=>blocked?'display:none':'font-size:11.5px;padding:4px 9px;flex:none';
+      if(!(P0.creating&&P0.mode==='catalog')){
+        pickerResults=this.searchCatalog(P0.query,{category:P0.category,exclude:P0.mode==='kit'?(x=>draftItems.some(i=>i.p===x.id)):null,boost:pickerIsAlt?(x=>(samePkg(x)?2:0)+(x.cat===pickerOriginal.cat?1:0)):null}).map(x=>{
+          const blocked=blockedReason(x),meta=[];
+          if(pickerIsAlt){if(samePkg(x))meta.push('Same package');if(x.cat===pickerOriginal.cat)meta.push('Same category');const used=this.usedInKits(x.id).map(k=>k.code);if(used.length)meta.push('Also required by '+used.join(', ')+' · its stock is shared');const origins=this.alternativeOrigins(x.id).filter(o=>o.id!==pickerOriginal.id).map(o=>o.name);if(origins.length)meta.push('Also a replacement for '+origins.join(', '));}
+          return{name:x.name,cat:x.cat,detail:detail(x),meta:meta.join(' · '),metaStyle:meta.length?'font-size:10.5px;color:var(--color-accent-700);margin-top:3px':'display:none',blocked,blockedStyle:blocked?'font-size:11px;color:var(--color-neutral-600);font-weight:600;flex:none':'display:none',useLabel,useStyle:useStyle(blocked),use:()=>this.pickerUse(x)};});
+        if(P0.mode==='order'&&P0.category==='All'){const terms=this.componentTextKey(P0.query).split(' ').filter(Boolean);(this.bagTypes||[]).filter(b=>terms.every(t=>this.componentTextKey('packaging '+b.name+' '+(b.size||'')).includes(t))).forEach(b=>pickerResults.push({name:'Packaging · '+b.name,cat:'Packaging',detail:b.size||'Size not entered',meta:'',metaStyle:'display:none',blocked:'',blockedStyle:'display:none',useLabel,useStyle:useStyle(false),use:()=>this.pickerUse({id:'bag:'+b.id,name:'Packaging · '+b.name})}));}
+      }
+      if(P0.creating)pickerMatches=this.findComponentMatches(P0.draft).map(m=>{const x=m.part,blocked=blockedReason(x),exact=m.level==='exact';return{name:x.name,cat:x.cat,detail:detail(x),levelLabel:exact?'Already in the list':'Similar',levelClass:exact?'tag-accent':'tag-outline',reason:blocked||m.reason,useLabel:P0.mode==='catalog'?'Open it':useLabel,useStyle:blocked?'display:none':useStyle(false),use:()=>this.pickerUse(x)};});
+    }
+    const pickerHasExact=pickerMatches.some(m=>m.levelLabel==='Already in the list'),pickerQuery=String(P0.query||'').trim();
+    const pickerTab=active=>`border:1px solid var(--color-divider);border-right-width:0;background:${active?'var(--color-accent)':'var(--color-surface)'};color:${active?'var(--color-bg)':'var(--color-text)'};font-size:12px;font-weight:600;padding:7px 14px;cursor:pointer`;
+    const picker={open:pickerOpen,stop:e=>e.stopPropagation(),close:()=>this.closePicker(),
+      title:{kit:'Add a component to '+pickerKitCode,order:'Choose a component for the order',alternative:'Find or add a replacement for '+(pickerOriginal?pickerOriginal.name:'this part'),catalog:'Add a component to the list'}[P0.mode]||'Components',
+      intro:{kit:'Pick a component that is already in the list. If it is missing, create it here and it is added to this kit as well.',order:'Search the component list or packaging. A part that is not listed can be created here and is then selected for the order.',alternative:'Search the component list first. A part you pick or create here is a normal component, so it can also be used in kits and orders.',catalog:'Check that the part is not already listed. Duplicate names are blocked and similar names are flagged before you save.'}[P0.mode]||'',
+      showTabs:P0.mode==='catalog'?'display:none':'display:flex;margin-bottom:14px',finding:!P0.creating&&P0.mode!=='catalog',creatingNow:Boolean(P0.creating),
+      findTabStyle:pickerTab(!P0.creating),createTabStyle:pickerTab(Boolean(P0.creating)).replace('border-right-width:0','border-right-width:1px'),showFind:()=>this.setPicker({creating:false}),showCreate:()=>this.setPicker({creating:true,draft:{...P0.draft,name:P0.draft.name||pickerQuery}}),
+      query:P0.query,onQuery:e=>this.setPicker({query:e.target.value}),category:P0.category,categories:['All',...pickerCategories],onCategory:e=>this.setPicker({category:e.target.value}),
+      results:pickerResults,resultsNote:pickerResults.length+(pickerResults.length===30?'+':'')+' component'+(pickerResults.length===1?'':'s')+(pickerQuery?' match “'+pickerQuery+'”':' shown · type to narrow the list'),
+      emptyStyle:pickerResults.length?'display:none':'padding:16px;border:1px dashed var(--color-divider);font-size:12.5px;color:var(--color-neutral-700);margin-top:10px',emptyText:pickerQuery?'Nothing in the component list matches “'+pickerQuery+'”.':'The component list is empty.',createFromQuery:()=>this.setPicker({creating:true,draft:{...P0.draft,name:pickerQuery||P0.draft.name}}),createFromQueryLabel:pickerQuery?'Create “'+pickerQuery+'”':'Create a new component',
+      draft:P0.draft,formCategories:pickerCategories,formCategory:P0.draft.cat||pickerCategories[0]||'',onName:e=>this.setPickerDraft({name:e.target.value}),onCat:e=>this.setPickerDraft({cat:e.target.value}),onMfr:e=>this.setPickerDraft({mfr:e.target.value}),onPkg:e=>this.setPickerDraft({pkg:e.target.value}),onBase:e=>this.setPickerDraft({base:e.target.value}),onRole:e=>this.setPickerDraft({role:e.target.value}),onDatasheet:e=>this.setPickerDraft({datasheetUrl:e.target.value}),
+      matches:pickerMatches,matchesStyle:pickerMatches.length?'border-left:3px solid var(--color-accent);background:var(--color-accent-100);padding:11px 13px;margin-top:12px':'display:none',
+      matchesHeadline:pickerHasExact?'This component is already in the list — use it instead of creating a duplicate.':'Similar components already exist. Check them before creating a new one.',
+      noteStyle:pickerIsAlt?'margin-top:12px':'display:none',note:P0.note,onNote:e=>this.setPicker({note:e.target.value}),
+      createLabel:{kit:'Create and add to kit',order:'Create and select',alternative:'Create and approve as replacement',catalog:'Add to component list'}[P0.mode]||'Create',createStyle:pickerHasExact?'opacity:.45;pointer-events:none':'',create:()=>this.pickerCreate(),
+      dsNote:'Paste a datasheet link if you have one; it is saved on the component.'};
 
     // Kit library
     const lib={note:'Kit definitions and the overall sales lineup are versioned separately. Decommissioning a kit removes it from future plans without erasing any historical semester, component list, or sales record.',
@@ -2713,7 +2875,7 @@ class Component extends DCLogic {
       stock:this.kits.map(k=>{const r=this.kitInventory(k.id);return{code:k.code,name:k.name,status:k.active===false?'Decommissioned':'Active',prepared:this.num(r.prepared),sold:this.num(r.sold),faulty:this.num(r.faulty),reserved:this.num(r.reserved),available:this.num(r.available)};}),
       semesters:this.terms.map(t=>{let revenue=0,cost=0,complete=true;this.kits.forEach(k=>{if(!this.isKitOffered(t.id,k.id))return;const price=this.kitSalePrice(k,t.id),units=this.rawKitSales(k,t.id);if(price===null)complete=false;else revenue+=price*units;cost+=this.kitUnitCost(k,t.id)*units;});return{term:t.label,status:this.status(t.id),classSize:this.num(Object.values(t.cls||{}).reduce((a,b)=>a+(Number(b)||0),0)),units:this.num(this.kits.reduce((a,k)=>a+this.rawKitSales(k,t.id),0)),revenue:complete?this.m(revenue):'—',profit:complete?this.m(revenue-cost):'—',edit:()=>this.setState({scope:'semester',semesterId:t.id,view:'kits',kitId:null})};}),
       add:()=>this.openOrderForm(),
-      form:{style:S.orderForm?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);padding:16px;background:var(--color-surface);margin-bottom:18px':'display:none',id:od.id,date:od.date,vendor:od.vendor,status:od.status,receiptUrl:od.receiptUrl||'',trackingNumber:od.trackingNumber||'',trackingUrl:od.trackingUrl||'',carrier:od.carrier||'',notes:od.notes||'',close:()=>{this.orderDraft=null;this.setState({orderForm:false});},onId:e=>{od.id=e.target.value;this.forceUpdate();},onDate:e=>{od.date=e.target.value;this.forceUpdate();},onVendor:e=>{od.vendor=e.target.value;this.forceUpdate();},onStatus:e=>{od.status=e.target.value;this.forceUpdate();},onReceipt:e=>{od.receiptUrl=e.target.value;this.forceUpdate();},onCarrier:e=>{od.carrier=e.target.value;this.forceUpdate();},onTrackingNumber:e=>{od.trackingNumber=e.target.value;this.forceUpdate();},onTrackingUrl:e=>{od.trackingUrl=e.target.value;this.forceUpdate();},onNotes:e=>{od.notes=e.target.value;this.forceUpdate();},terms:this.terms.filter(t=>this.status(t.id)==='Planning').map(t=>({label:t.label,go:()=>{const i=od.terms.indexOf(t.id);if(i>=0)od.terms.splice(i,1);else od.terms.push(t.id);this.forceUpdate();},style:`border:1px solid ${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-divider)'};background:${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-surface)'};color:${od.terms.includes(t.id)?'var(--color-bg)':'var(--color-text)'};font-size:11px;padding:5px 8px;cursor:pointer`})),lines:od.lines.map((l,i)=>({name:this.orderItemName(l[0]),requirement:this.orderLineRequirement(l),vendor:l[3]||od.vendor||'',qty:this.num(l[1]),unit:this.mu(l[2]),url:l[5]||'#',linkStyle:l[5]?'font-size:10px;font-weight:700;color:var(--color-accent-700)':'display:none',onVendor:e=>{l[3]=e.target.value;this.forceUpdate();},remove:()=>{od.lines.splice(i,1);this.forceUpdate();}})),parts:[...this.catalog.map(p=>({id:p.id,name:p.name})),...(this.bagTypes||[]).map(b=>({id:'bag:'+b.id,name:'Packaging · '+b.name}))],linePart:S.orderLinePart,lineQty:S.orderLineQty,lineUnit:S.orderLineUnit,onLinePart:e=>this.setState({orderLinePart:e.target.value}),onLineQty:e=>this.setState({orderLineQty:e.target.value}),onLineUnit:e=>this.setState({orderLineUnit:e.target.value}),addLine:()=>this.addOrderDraftLine(),save:()=>this.saveOrder()},
+      form:{style:S.orderForm?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);padding:16px;background:var(--color-surface);margin-bottom:18px':'display:none',id:od.id,date:od.date,vendor:od.vendor,status:od.status,receiptUrl:od.receiptUrl||'',trackingNumber:od.trackingNumber||'',trackingUrl:od.trackingUrl||'',carrier:od.carrier||'',notes:od.notes||'',close:()=>{this.orderDraft=null;this.setState({orderForm:false});},onId:e=>{od.id=e.target.value;this.forceUpdate();},onDate:e=>{od.date=e.target.value;this.forceUpdate();},onVendor:e=>{od.vendor=e.target.value;this.forceUpdate();},onStatus:e=>{od.status=e.target.value;this.forceUpdate();},onReceipt:e=>{od.receiptUrl=e.target.value;this.forceUpdate();},onCarrier:e=>{od.carrier=e.target.value;this.forceUpdate();},onTrackingNumber:e=>{od.trackingNumber=e.target.value;this.forceUpdate();},onTrackingUrl:e=>{od.trackingUrl=e.target.value;this.forceUpdate();},onNotes:e=>{od.notes=e.target.value;this.forceUpdate();},terms:this.terms.filter(t=>this.status(t.id)==='Planning').map(t=>({label:t.label,go:()=>{const i=od.terms.indexOf(t.id);if(i>=0)od.terms.splice(i,1);else od.terms.push(t.id);this.forceUpdate();},style:`border:1px solid ${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-divider)'};background:${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-surface)'};color:${od.terms.includes(t.id)?'var(--color-bg)':'var(--color-text)'};font-size:11px;padding:5px 8px;cursor:pointer`})),lines:od.lines.map((l,i)=>({name:this.orderItemName(l[0]),requirement:this.orderLineRequirement(l),vendor:l[3]||od.vendor||'',qty:this.num(l[1]),unit:this.mu(l[2]),url:l[5]||'#',linkStyle:l[5]?'font-size:10px;font-weight:700;color:var(--color-accent-700)':'display:none',onVendor:e=>{l[3]=e.target.value;this.forceUpdate();},remove:()=>{od.lines.splice(i,1);this.forceUpdate();}})),linePartLabel:this.orderItemName(S.orderLinePart)||'Choose a component…',openPicker:()=>this.openPicker('order'),linePart:S.orderLinePart,lineQty:S.orderLineQty,lineUnit:S.orderLineUnit,onLinePart:e=>this.setState({orderLinePart:e.target.value}),onLineQty:e=>this.setState({orderLineQty:e.target.value}),onLineUnit:e=>this.setState({orderLineUnit:e.target.value}),addLine:()=>this.addOrderDraftLine(),save:()=>this.saveOrder()},
       rows:this.orders.map(o=>({id:o.id,date:o.date,vendor:o.vendor,status:o.status||(o.receipt?'received':'ordered'),terms:o.terms.map(t=>(this.termMap[t]||{}).label||t),trackingUrl:o.trackingUrl||'#',trackingLabel:o.trackingNumber?((o.carrier?o.carrier+' · ':'')+o.trackingNumber):'Not entered',trackingStyle:o.trackingUrl?'font-size:11.5px;font-weight:700;color:var(--color-accent-700)':'font-size:11.5px;color:var(--color-neutral-600);pointer-events:none',lines:o.lines.length,total:this.m(ordTotal(o)),receiptUrl:o.receiptUrl||'#',rcpt:o.receiptUrl||o.receipt?'Filed':'Missing',rcptClass:o.receiptUrl||o.receipt?'tag-neutral':'tag-accent',stop:e=>{if(!o.receiptUrl)e.preventDefault();e.stopPropagation();},stopTracking:e=>{if(!o.trackingUrl)e.preventDefault();e.stopPropagation();},toggle:()=>this.setState({orderOpen:S.orderOpen===o.id?null:o.id})})),
       detailStyle:S.orderOpen?'margin-top:24px':'display:none',
       detail:(()=>{ const o=this.orders.find(x=>x.id===S.orderOpen); if(!o) return {id:'',meta:'',lines:[]};
@@ -2748,7 +2910,7 @@ class Component extends DCLogic {
       vKits:!glob&&effectiveView==='kits',vKit:!glob&&effectiveView==='kit',vList:!glob&&effectiveView==='list',vForecast:!glob&&effectiveView==='forecast',
       vBuild:glob?G==='build':effectiveView==='build',vPricing:false,vSearch:false,
       vHome:glob&&G==='home',vInventory:glob&&G==='inventory',vTrends:glob&&G==='trends',vAccuracy:glob&&G==='accuracy',vCombine:glob&&G==='combine',vCatalog:glob&&G==='catalog',vLibrary:glob&&G==='library',vKitHistory:glob&&G==='kit-history',vOrders:glob&&G==='orders',vHistory:glob&&G==='history',
-      home,inventory,trends,acc,comb,cat,lib,kitHistory,historyLog,historyPanel,ord,
+      home,inventory,trends,acc,comb,cat,picker,lib,kitHistory,historyLog,historyPanel,ord,
       kitsCards,kit,backToKits:()=>this.setState({view:'kits',kitId:null}),
       builder,list,pricing,search,forecast,semesterSales,priceTest,modal,toast:S.toast,
       newSemester:()=>{const next=this.nextPlanningSemester();this.setState({semesterForm:true,sidebarOpen:false,semesterDraft:next,semesterSuggestion:null,semesterNotes:'',semesterError:''});},

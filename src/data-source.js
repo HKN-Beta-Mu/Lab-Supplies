@@ -196,6 +196,7 @@
         vendorPolicy: state.vendorPolicy || "best",
         lineVendor: state.lineVendor || {},
         lineSubstitute: state.lineSubstitute || {},
+        lineProgress: state.lineProgress || {},
       },
       catalog: Array.isArray(source.catalog) ? source.catalog : [],
       kits: Array.isArray(source.kits) ? source.kits : [],
