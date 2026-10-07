@@ -100,11 +100,13 @@ POST { action: "releaseSession", sessionId: "..." }
 `syncedAt` value. The frontend can keep that snapshot in IndexedDB for fast
 startup and offline read access.
 
-Two authenticated editor-only actions use optional external services:
+Authenticated editor-only actions use optional external services:
 
 ```text
 POST { action: "suggestSemester", payload: { season, year, notes } }
 POST { action: "refreshSupplierQuotes", payload: { componentId, quantity } }
+POST { action: "lookupVendorComponent", payload: { vendor, query } }
+POST { action: "parseNewComponentText", payload: { text, vendor, categories } }
 ```
 
 `suggestSemester` always starts with a deterministic same-season historical
@@ -119,6 +121,24 @@ candidate for manual review; it never supplies numeric prices. A quote records
 its provider, source timestamp, requested and order quantities, MOQ/multiple,
 and price breaks. Shipping is excluded unless the supplier explicitly returns
 it.
+
+`lookupVendorComponent` is used when an officer adds a component that is not
+in the catalog yet. For one configured supplier (Mouser, DigiKey, or Newark) it
+searches a part number, vendor SKU, or keyword and returns up to twelve priced
+candidates: manufacturer part number, manufacturer, description, vendor
+category, package, link, datasheet, stock, and price breaks, all taken from the
+supplier API. It reads no saved state and fetches no vendor webpage. Package and
+category are read defensively from vendor attributes and may be empty; the
+browser guesses the rest from the description and the officer reviews it.
+`parseNewComponentText` does the same for vendors without an API: Gemini extracts
+only facts present in text the officer pasted. The category must be one of the
+catalog's existing categories, and no vendor link is invented.
+
+The browser saves a chosen candidate as an officer-maintained (`manual`) vendor
+listing on the new component, with its source and look-up date, in one undoable
+change together with the component. Compatibility stays "unknown" until the
+officer confirms the exact listing. An unconfirmed listing can still be ordered
+from Procurement but is left out of "cheapest source" prices.
 
 ## Inventory allocation rule
 

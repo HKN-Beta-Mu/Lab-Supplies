@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.06\.18"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.06\.19"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -372,14 +372,177 @@ test("the data model initializes and can create a persisted semester", async () 
     app.builderDraft = null;
     assert.equal(app.catalog.length, catalogCount);
 
+    // Vendor lookup: fills the new-component form and saves a vendor listing with the component as one change.
+    const dataSource = globalThis.window.LabKitDataSource;
+    const lookupCalls = [];
+    const flashes = [];
+    const originalFlash = app.flash;
+    app.flash = (message) => flashes.push(message);
+    const nandCandidate = {
+      vendor: "Mouser", vendorSku: "595-SN74HCT99N", name: "SN74HCT99N", manufacturer: "Texas Instruments",
+      description: "Logic Gates Quad 2-Input NAND Gate", category: "Logic Gates", packageName: "PDIP-14",
+      productUrl: "https://www.mouser.com/ProductDetail/595-SN74HCT99N", datasheetUrl: "https://example.com/hct99.pdf",
+      available: 1234, leadTime: "3 Days", unitPrice: 0.52,
+      priceBreaks: [{ quantity: 1, unitPrice: 0.52 }, { quantity: 100, unitPrice: 0.31 }], source: "Mouser Search API",
+    };
+    const resistorCandidate = { ...nandCandidate, vendorSku: "603-CF14JT1K00", name: "CF14JT1K00", manufacturer: "Yageo", description: "Carbon Film Resistors 1kOhm 5% 1/4W", category: "Carbon Film Resistors", packageName: "", unitPrice: 0.02, priceBreaks: [{ quantity: 1, unitPrice: 0.02 }] };
+    dataSource.capabilities = { suppliers: { mouser: true, digikey: false, newark: true } };
+    dataSource.lookupVendorComponent = async (request) => { lookupCalls.push(request); return { candidates: [nandCandidate, resistorCandidate], message: "Mouser returned 2 priced matches." }; };
+    app.openPicker("catalog", { create: true });
+    app.setPickerLookup({ vendor: "Mouser", query: "SN74HCT99N" });
+    await app.pickerLookup();
+    assert.deepEqual(lookupCalls, [{ vendor: "Mouser", query: "SN74HCT99N" }]);
+    const pickerLookupVals = app.renderVals().picker;
+    assert.equal(pickerLookupVals.candidates.length, 2);
+    assert.equal(pickerLookupVals.lookupVendors.find((vendor) => vendor.id === "DigiKey").label, "DigiKey (not configured)");
+    pickerLookupVals.candidates[0].use();
+    let filled = app.state.picker;
+    assert.equal(filled.draft.name, "SN74HCT99N");
+    assert.equal(filled.draft.cat, "Logic IC");
+    assert.equal(filled.draft.pkg, "PDIP-14");
+    assert.equal(filled.draft.base, "0.52");
+    assert.equal(filled.listing.priceBreaks, "1 = 0.52\n100 = 0.31");
+    assert.equal(filled.listing.compatibility, "unknown");
+    assert.match(filled.listing.source, /Mouser Search API · looked up \d{4}-\d{2}-\d{2}/);
+    app.renderVals().picker.candidates.length === 0 || assert.fail("choosing a candidate clears the list");
+    const changeTotal = app.changeLog.length;
+    app.pickerCreate();
+    const lookedUp = app.catalog.find((part) => part.name === "SN74HCT99N");
+    assert.ok(lookedUp);
+    const lookedUpQuote = app.supplierQuotes[lookedUp.id][0];
+    assert.equal(lookedUpQuote.manual, true);
+    assert.equal(lookedUpQuote.verified, false);
+    assert.equal(lookedUpQuote.vendorSku, "595-SN74HCT99N");
+    assert.equal(lookedUpQuote.requirementsPending, true);
+    assert.match(lookedUpQuote.source, /looked up/);
+    assert.equal(app.vendors(lookedUp.id, 100).find((vendor) => vendor.vendor === "Mouser").unit, 0.31);
+    assert.equal(app.changeLog.length, changeTotal + 1);
+    assert.equal(app.changeLog[0].entity, "component-model");
+    app.undoChange(app.changeLog[0].id);
+    assert.ok(!app.catalog.some((part) => part.name === "SN74HCT99N"));
+    assert.equal(app.supplierQuotes[lookedUp.id], undefined);
+    assert.equal(app.catalog.length, catalogCount);
+
+    // A broken link creates nothing; a second candidate is categorised as a resistor.
+    app.openPicker("catalog", { create: true, name: "Bad Link Part" });
+    app.setPickerListing({ vendor: "Mouser", productUrl: "not a url" });
+    app.pickerCreate();
+    assert.equal(app.catalog.length, catalogCount);
+    assert.ok(app.state.picker);
+    assert.match(flashes.at(-1), /valid http or https product link/);
+    app.pickerApplyCandidate(resistorCandidate);
+    assert.equal(app.state.picker.draft.cat, "Passive R");
+
+    // The same vendor SKU under a different name is flagged, and the vendor can be added to that component instead.
+    const skuHost = app.createCatalogComponent({ name: "SKU Host Part", cat: "Passive R", vendorListing: { vendor: "Mouser", sku: "SKU-123", productUrl: "https://example.com/a", priceBreaks: "1 = 0.10" } });
+    assert.equal(skuHost.created, true);
+    app.openPicker("catalog", { create: true, name: "Another Name" });
+    app.setPickerListing({ vendor: "mouser", sku: "sku-123", productUrl: "https://example.com/a", priceBreaks: "1 = 0.08" });
+    const skuMatch = app.renderVals().picker.matches.find((row) => row.levelLabel === "Same vendor part");
+    assert.ok(skuMatch);
+    assert.match(skuMatch.reason, /SKU-123/);
+    assert.doesNotMatch(skuMatch.addVendorStyle, /display:none/);
+    skuMatch.addVendor();
+    assert.equal(app.supplierQuotes[skuHost.part.id].length, 1, "same vendor and SKU updates instead of duplicating");
+    assert.equal(app.supplierQuotes[skuHost.part.id][0].unitPrice, 0.08);
+    app.undoChange(app.changeLog[0].id);
+    app.undoChange(app.changeLog.find((change) => change.entity === "component-model" && !change.undoneAt).id);
+    assert.equal(app.catalog.length, catalogCount);
+
+    // An exact existing component offers "add this vendor to it".
+    app.openPicker("catalog", { create: true, name: app.map.hct20.name });
+    app.setPickerListing({ vendor: "Mouser", productUrl: "https://example.com/hct20", priceBreaks: "1 = 0.30" });
+    const existingRow = app.renderVals().picker.matches[0];
+    assert.equal(existingRow.levelLabel, "Already in the list");
+    assert.doesNotMatch(existingRow.addVendorStyle, /display:none/);
+    const hct20Quotes = (app.supplierQuotes.hct20 || []).length;
+    existingRow.addVendor();
+    assert.equal(app.supplierQuotes.hct20.length, hct20Quotes + 1);
+    app.undoChange(app.changeLog[0].id);
+    assert.equal((app.supplierQuotes.hct20 || []).length, hct20Quotes);
+
+    // Pasted listing for a vendor without an API goes through the Gemini text parser.
+    dataSource.parseNewComponentText = async () => ({ name: "LM358P", vendor: "Jameco", vendorSku: "23048", manufacturer: "TI", description: "Dual op amp", packageName: "PDIP-8", category: "Op-Amp", priceBreaks: [{ quantity: 1, unitPrice: 0.69 }], stock: 12, leadTime: "", message: "Gemini drafted this." });
+    app.openPicker("catalog", { create: true });
+    app.setPickerLookup({ vendor: "Other", otherName: "Jameco", text: "LM358P dual op amp $0.69" });
+    await app.pickerLookup();
+    assert.equal(app.state.picker.draft.cat, "Op-Amp");
+    assert.equal(app.state.picker.listing.vendor, "Jameco");
+    assert.equal(app.state.picker.listing.productUrl, "", "no webpage is fetched, so the link is left for the officer");
+    app.pickerCreate();
+    assert.ok(!app.catalog.some((part) => part.name === "LM358P"), "a listing without a link is not saved half-finished");
+    app.setPickerListing({ productUrl: "https://www.jameco.com/z/LM358P" });
+    app.pickerCreate();
+    assert.ok(app.catalog.some((part) => part.name === "LM358P"));
+    app.undoChange(app.changeLog[0].id);
+
+    // Replacement flow with a vendor listing: one change creates the part, the link and the quote; one undo removes all three.
+    app.openPicker("alternative", { originalId: "hct04" });
+    app.setPicker({ note: "Verified" });
+    app.setPickerDraft({ name: "Alt With Vendor" });
+    app.setPickerListing({ vendor: "Jameco", sku: "J-1", productUrl: "https://www.jameco.com/z/J-1", priceBreaks: "1 = 0.40" });
+    const altChanges = app.changeLog.length;
+    app.pickerCreate();
+    const altWithVendor = app.catalog.find((part) => part.name === "Alt With Vendor");
+    assert.equal(app.supplierQuotes[altWithVendor.id][0].vendor, "Jameco");
+    assert.ok(app.approvedAlternatives("hct04").some((alt) => alt.componentId === altWithVendor.id));
+    assert.equal(app.changeLog.length, altChanges + 1);
+    app.undoChange(app.changeLog[0].id);
+    assert.ok(!app.catalog.some((part) => part.name === "Alt With Vendor"));
+    assert.equal(app.supplierQuotes[altWithVendor.id], undefined);
+    assert.ok(!app.approvedAlternatives("hct04").some((alt) => alt.componentId === altWithVendor.id));
+
+    // Typing a vendor name for a pasted listing updates both the lookup and the saved listing in one write.
+    app.openPicker("catalog", { create: true });
+    app.setPickerLookup({ vendor: "Other" });
+    app.renderVals().picker.onLookupOtherName({ target: { value: "Jameco" } });
+    assert.equal(app.state.picker.lookup.otherName, "Jameco");
+    assert.equal(app.state.picker.listing.vendor, "Jameco");
+    assert.equal(app.renderVals().picker.lookupQueryLabel, "Part number, vendor SKU or keyword");
+    app.setPickerLookup({ vendor: "DigiKey" });
+    assert.equal(app.renderVals().picker.lookupQueryLabel, "Exact part number or DigiKey SKU");
+    app.closePicker();
+
+    // No backend, an old backend, and an unconfigured vendor each explain themselves.
+    app.openPicker("catalog", { create: true });
+    app.setPickerLookup({ vendor: "DigiKey", query: "X" });
+    lookupCalls.length = 0;
+    await app.pickerLookup();
+    assert.match(app.state.picker.lookup.message, /not configured/);
+    assert.equal(lookupCalls.length, 0);
+    app.setPickerLookup({ vendor: "Mouser", query: "X" });
+    dataSource.lookupVendorComponent = async () => { throw Object.assign(new Error("That LabKit action is not supported."), { code: "UNKNOWN_ACTION" }); };
+    await app.pickerLookup();
+    assert.match(app.state.picker.lookup.message, /redeployed/);
+    delete dataSource.lookupVendorComponent;
+    await app.pickerLookup();
+    assert.match(app.state.picker.lookup.message, /deployed Apps Script backend/);
+
+    // A slow lookup never writes into a different or closed dialog.
+    let releaseLookup;
+    dataSource.lookupVendorComponent = () => new Promise((resolve) => { releaseLookup = () => resolve({ candidates: [nandCandidate, resistorCandidate], message: "late" }); });
+    const slow = app.pickerLookup();
+    app.closePicker();
+    app.openPicker("order");
+    releaseLookup();
+    await slow;
+    assert.deepEqual(app.state.picker.lookup.candidates, []);
+    assert.equal(app.state.picker.lookup.message, "");
+    assert.equal(app.state.picker.draft.name, "");
+    app.closePicker();
+    app.flash = originalFlash;
+    delete dataSource.lookupVendorComponent;
+    delete dataSource.parseNewComponentText;
+    delete dataSource.capabilities;
+
     // Every key the dialog markup reads exists on the view model.
     const pickerMarkup = html.match(/<!-- picker:start -->([\s\S]*?)<!-- picker:end -->/)[1];
     const pathOf = (root, path) => path.split(".").reduce((value, key) => (value == null ? undefined : value[key]), root);
     for (const [, path] of pickerMarkup.matchAll(/\{\{\s*picker\.([\w.]+)\s*\}\}/g)) {
-      assert.notEqual(pathOf(pickerFindVals, path) ?? pathOf(pickerCreateVals, path), undefined, `picker.${path} is missing from the view model`);
+      assert.notEqual(pathOf(pickerFindVals, path) ?? pathOf(pickerCreateVals, path) ?? pathOf(pickerLookupVals, path), undefined, `picker.${path} is missing from the view model`);
     }
     for (const [, listName, alias, body] of pickerMarkup.matchAll(/list="\{\{\s*picker\.(\w+)\s*\}\}" as="(\w+)"[^>]*>([\s\S]*?)<\/template>/g)) {
-      const sample = (pickerFindVals[listName] || pickerCreateVals[listName] || [])[0];
+      const sample = [pickerFindVals, pickerCreateVals, pickerLookupVals].map((vals) => (vals[listName] || [])[0]).find(Boolean);
       if (typeof sample !== "object") continue;
       for (const [, key] of body.matchAll(new RegExp(`\\{\\{\\s*${alias}\\.(\\w+)\\s*\\}\\}`, "g"))) {
         assert.ok(key in sample, `${listName} items are missing ${key}`);
@@ -1040,6 +1203,7 @@ test("supplier and Gemini adapters normalize official API responses", async () =
     }),
   };
   const requests = [];
+  let geminiText = '{"ok":true}';
   const UrlFetchApp = {
     fetch(url, options) {
       requests.push({ url, options });
@@ -1052,6 +1216,11 @@ test("supplier and Gemini adapters normalize official API responses", async () =
               ManufacturerPartNumber: "TEST-1",
               Manufacturer: "Test Parts",
               Description: "Bipolar through-hole capacitor",
+              Category: "Capacitors",
+              ProductAttributes: [
+                { AttributeName: "Mounting Style", AttributeValue: "Through Hole" },
+                { AttributeName: "Package / Case", AttributeValue: "Radial" },
+              ],
               Availability: "1,234 In Stock",
               Min: "5",
               Mult: "5",
@@ -1084,7 +1253,7 @@ test("supplier and Gemini adapters normalize official API responses", async () =
         };
       } else {
         body = {
-          candidates: [{ content: { parts: [{ text: '{"ok":true}' }] } }],
+          candidates: [{ content: { parts: [{ text: geminiText }] } }],
         };
       }
       return {
@@ -1096,7 +1265,7 @@ test("supplier and Gemini adapters normalize official API responses", async () =
   const api = new Function(
     "PropertiesService",
     "UrlFetchApp",
-    `${source}\nreturn { fetchMouserQuotes_, fetchNewarkQuotes_, callGeminiJson_ };`,
+    `${source}\nreturn { fetchMouserQuotes_, fetchNewarkQuotes_, callGeminiJson_, lookupVendorComponent_, parseNewComponentText_, configuredSuppliers_, publicCapabilities_, apiFailure_ };`,
   )(PropertiesService, UrlFetchApp);
 
   const quotes = api.fetchMouserQuotes_({
@@ -1136,6 +1305,44 @@ test("supplier and Gemini adapters normalize official API responses", async () =
   const geminiPayload = JSON.parse(requests[2].options.payload);
   assert.equal(geminiPayload.generationConfig.responseMimeType, "application/json");
   assert.deepEqual(geminiPayload.generationConfig.responseSchema.required, ["ok"]);
+
+  // Vendor lookup for a component that does not exist yet.
+  assert.deepEqual(api.configuredSuppliers_(), { mouser: true, digikey: false, newark: true });
+  assert.deepEqual(api.publicCapabilities_().suppliers, { mouser: true, digikey: false, newark: true });
+  const mouserLookup = api.lookupVendorComponent_({ payload: { vendor: "Mouser", query: "TEST-1" } });
+  assert.equal(mouserLookup.candidates.length, 1);
+  assert.deepEqual(
+    { ...mouserLookup.candidates[0], priceBreaks: undefined, source: undefined },
+    {
+      vendor: "Mouser", vendorSku: "595-TEST", name: "TEST-1", manufacturer: "Test Parts",
+      description: "Bipolar through-hole capacitor", category: "Capacitors", packageName: "Radial",
+      productUrl: "", datasheetUrl: "", available: 1234, leadTime: "3 Days", minimumOrderQuantity: 5,
+      unitPrice: 0.1, priceBreaks: undefined, source: undefined,
+    },
+  );
+  assert.equal(mouserLookup.candidates[0].priceBreaks.length, 2);
+  const newarkLookup = api.lookupVendorComponent_({ payload: { vendor: "Newark", query: "TEST-1" } });
+  assert.equal(newarkLookup.candidates[0].vendorSku, "12M-TEST");
+  assert.equal(newarkLookup.candidates[0].packageName, "", "missing vendor attributes read as empty, not as errors");
+  assert.throws(() => api.lookupVendorComponent_({ payload: { vendor: "DigiKey", query: "TEST-1" } }), (error) => error.code === "SUPPLIER_NOT_CONFIGURED");
+  assert.throws(() => api.lookupVendorComponent_({ payload: { vendor: "Amazon", query: "TEST-1" } }), (error) => error.code === "INVALID_INPUT");
+  assert.throws(() => api.lookupVendorComponent_({ payload: { vendor: "Mouser", query: "x".repeat(161) } }), (error) => error.code === "INVALID_INPUT");
+  assert.equal(api.apiFailure_({ code: "SUPPLIER_NOT_CONFIGURED", message: "not set" }).error.code, "SUPPLIER_NOT_CONFIGURED");
+  assert.equal(api.apiFailure_({ code: "AI_NOT_CONFIGURED", message: "no key" }).error.code, "AI_NOT_CONFIGURED");
+
+  geminiText = JSON.stringify({
+    name: "LM358P", vendor: "Jameco", vendorSku: "23048", manufacturer: "TI", description: "Dual op amp",
+    packageName: "PDIP-8", category: "Bogus Category", leadTime: "",
+    priceBreaks: [{ quantity: 1, unitPrice: 0.69 }], shippingCost: null, stock: 12,
+  });
+  const pasted = api.parseNewComponentText_({ payload: { text: "LM358P dual op amp $0.69", vendor: "Jameco", categories: ["Op-Amp", "Logic IC"] } });
+  assert.equal(pasted.name, "LM358P");
+  assert.equal(pasted.category, "", "a category outside the catalog list is discarded");
+  assert.deepEqual(pasted.priceBreaks, [{ quantity: 1, unitPrice: 0.69 }]);
+  assert.match(pasted.message, /no vendor webpage was fetched/);
+  const geminiRequest = JSON.parse(requests.at(-1).options.payload);
+  assert.match(geminiRequest.contents[0].parts[0].text, /Only use the pasted text|Use only the pasted text/);
+  assert.deepEqual(geminiRequest.generationConfig.responseSchema.properties.category.enum, ["Op-Amp", "Logic IC", ""]);
 });
 
 test("Apps Script editor lease grants one writer and promotes a viewer after release", async () => {

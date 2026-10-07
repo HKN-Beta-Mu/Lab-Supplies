@@ -216,6 +216,14 @@ function apiRequest(request) {
         requireRole_(user, ["admin"]);
         renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
         return apiSuccess_(parseSupplierText_(input));
+      case "lookupVendorComponent":
+        requireRole_(user, ["admin"]);
+        renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
+        return apiSuccess_(lookupVendorComponent_(input));
+      case "parseNewComponentText":
+        requireRole_(user, ["admin"]);
+        renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
+        return apiSuccess_(parseNewComponentText_(input));
       default:
         throw appError_("UNKNOWN_ACTION", "That LabKit action is not supported.");
     }
@@ -225,8 +233,20 @@ function apiRequest(request) {
   }
 }
 
+// One definition of "this supplier API can be called", shared by quote refresh, component lookup and the capability flags.
+function configuredSuppliers_() {
+  return {
+    mouser: Boolean(getOptionalProperty_(LABKIT_CONFIG.properties.mouserApiKey)),
+    digikey: Boolean(getOptionalProperty_(LABKIT_CONFIG.properties.digikeyClientId)
+      && getOptionalProperty_(LABKIT_CONFIG.properties.digikeyClientSecret)
+      && getOptionalProperty_(LABKIT_CONFIG.properties.digikeyAccountId)),
+    newark: Boolean(getOptionalProperty_(LABKIT_CONFIG.properties.newarkApiKey)),
+  };
+}
+
 function publicCapabilities_() {
   return {
+    suppliers: configuredSuppliers_(),
     gemini: {
       configured: Boolean(getOptionalProperty_(LABKIT_CONFIG.properties.geminiApiKey)),
       model: getOptionalProperty_(LABKIT_CONFIG.properties.geminiModel) || "gemini-2.5-flash",
@@ -651,7 +671,8 @@ function refreshSupplierQuotes_(input) {
 
   let quotes = [];
   const providerMessages = [];
-  if (getOptionalProperty_(LABKIT_CONFIG.properties.mouserApiKey)) {
+  const configuredSuppliers = configuredSuppliers_();
+  if (configuredSuppliers.mouser) {
     try {
       quotes = quotes.concat(fetchMouserQuotes_(component, quantity));
     } catch (error) {
@@ -660,9 +681,7 @@ function refreshSupplierQuotes_(input) {
   } else {
     providerMessages.push("Mouser API key is not configured.");
   }
-  if (getOptionalProperty_(LABKIT_CONFIG.properties.digikeyClientId)
-      && getOptionalProperty_(LABKIT_CONFIG.properties.digikeyClientSecret)
-      && getOptionalProperty_(LABKIT_CONFIG.properties.digikeyAccountId)) {
+  if (configuredSuppliers.digikey) {
     try {
       quotes = quotes.concat(fetchDigiKeyQuotes_(component, quantity));
     } catch (error) {
@@ -671,7 +690,7 @@ function refreshSupplierQuotes_(input) {
   } else {
     providerMessages.push("DigiKey credentials or account ID are not configured.");
   }
-  if (getOptionalProperty_(LABKIT_CONFIG.properties.newarkApiKey)) {
+  if (configuredSuppliers.newark) {
     try {
       quotes = quotes.concat(fetchNewarkQuotes_(component, quantity));
     } catch (error) {
@@ -738,6 +757,145 @@ function refreshSupplierQuotes_(input) {
   };
 }
 
+const PACKAGE_ATTRIBUTE_PATTERN_ = /^(package\s*\/\s*case|supplier device package|package|case code|case)\b/i;
+
+// Reads one named attribute from a vendor's attribute list. Missing or oddly shaped lists simply yield "".
+function attributeValue_(rows, nameKey, valueKey, pattern) {
+  const found = arrayOrEmpty_(rows).find(function (row) {
+    return isPlainObject_(row) && pattern.test(String(row[nameKey] || "").trim()) && String(row[valueKey] || "").trim();
+  });
+  return found ? String(found[valueKey]).trim().slice(0, 120) : "";
+}
+
+const LOOKUP_VENDORS_ = {
+  Mouser: { flag: "mouser", fetch: function (component) { return fetchMouserQuotes_(component, 1); } },
+  DigiKey: { flag: "digikey", fetch: function (component) { return fetchDigiKeyQuotes_(component, 1); } },
+  Newark: { flag: "newark", fetch: function (component) { return fetchNewarkQuotes_(component, 1); } },
+};
+
+// Search one configured supplier for a part number, SKU or keyword and return catalog-ready candidates. It reads no saved state
+// and never fetches a vendor webpage: every value comes from the supplier's own API response.
+function lookupVendorComponent_(input) {
+  const payload = requirePlainObject_(input.payload, "payload");
+  const vendor = requireString_(payload.vendor, "vendor", 40);
+  const query = requireString_(payload.query, "query", 160);
+  if (!Object.prototype.hasOwnProperty.call(LOOKUP_VENDORS_, vendor)) {
+    throw appError_("INVALID_INPUT", "Supported vendor lookups: " + Object.keys(LOOKUP_VENDORS_).join(", ") + ".");
+  }
+  const provider = LOOKUP_VENDORS_[vendor];
+  if (!configuredSuppliers_()[provider.flag]) {
+    throw appError_("SUPPLIER_NOT_CONFIGURED", vendor + " is not configured. Add its API credentials in Apps Script Project Settings, then deploy a new version.");
+  }
+  let quotes;
+  try {
+    quotes = provider.fetch({ id: "lookup", name: query, mfr: "", pkg: "" });
+  } catch (error) {
+    throw appError_("SUPPLIER_UNAVAILABLE", vendor + " lookup failed: " + safeProviderMessage_(error));
+  }
+  const seen = {};
+  const candidates = arrayOrEmpty_(quotes).filter(function (quote) {
+    const key = String(quote.vendorSku || quote.manufacturerPartNumber || "");
+    if (!key || seen[key]) return false;
+    seen[key] = true;
+    return true;
+  }).slice(0, 12).map(function (quote) {
+    return {
+      vendor: vendor,
+      vendorSku: String(quote.vendorSku || "").slice(0, 160),
+      name: String(quote.manufacturerPartNumber || quote.vendorSku || "").slice(0, 160),
+      manufacturer: String(quote.manufacturer || "").slice(0, 160),
+      description: String(quote.description || "").slice(0, 1200),
+      category: String(quote.category || "").slice(0, 160),
+      packageName: String(quote.packageName || "").slice(0, 120),
+      productUrl: String(quote.productUrl || "").slice(0, 600),
+      datasheetUrl: String(quote.datasheetUrl || "").slice(0, 600),
+      available: quote.available === undefined || quote.available === null ? null : numberOrZero_(quote.available),
+      leadTime: String(quote.leadTime || "").slice(0, 160),
+      minimumOrderQuantity: Math.max(1, numberOrZero_(quote.minimumOrderQuantity) || 1),
+      unitPrice: Number.isFinite(Number(quote.unitPrice)) ? Number(quote.unitPrice) : null,
+      priceBreaks: arrayOrEmpty_(quote.priceBreaks).slice(0, 20).map(function (row) {
+        return { quantity: Math.max(1, numberOrZero_(row.quantity) || 1), unitPrice: Number(row.unitPrice) };
+      }).filter(function (row) { return Number.isFinite(row.unitPrice) && row.unitPrice >= 0; }),
+      source: String(quote.source || vendor),
+    };
+  });
+  return {
+    vendor: vendor,
+    query: query,
+    candidates: candidates,
+    checkedAt: new Date().toISOString(),
+    message: candidates.length
+      ? vendor + " returned " + candidates.length + " priced match" + (candidates.length === 1 ? "" : "es") + ". Review the part before using it."
+      : vendor + " returned no priced match for “" + query + "”. Try the manufacturer part number or the vendor SKU.",
+  };
+}
+
+// Draft a NEW component and its vendor listing from text the officer pasted (for vendors without an API, such as Jameco).
+function parseNewComponentText_(input) {
+  const payload = requirePlainObject_(input.payload, "payload");
+  const sourceText = requireString_(payload.text, "text", 30000);
+  const vendorHint = typeof payload.vendor === "string" ? payload.vendor.trim().slice(0, 120) : "";
+  const categories = arrayOrEmpty_(payload.categories).filter(function (value) {
+    return typeof value === "string" && value.trim() && value.length <= 80;
+  }).slice(0, 40);
+  if (!getOptionalProperty_(LABKIT_CONFIG.properties.geminiApiKey)) {
+    throw appError_(
+      "AI_NOT_CONFIGURED",
+      "Gemini is not connected. Add LABKIT_GEMINI_API_KEY in Apps Script Project Settings, then deploy a new version."
+    );
+  }
+  const prompt = [
+    "Extract a new electronics component and its supplier listing from text copied by an officer.",
+    "Use only the pasted text. Never invent a price, stock count, shipping cost, lead time, SKU, manufacturer, package, or specification.",
+    "Return unknown values as empty strings or null. Price breaks must be unit prices, not extended totals.",
+    "name is the manufacturer part number if present, otherwise the most specific product title. Choose category only from this list, or leave it empty: " + JSON.stringify(categories),
+    vendorHint ? "The officer says the vendor is: " + vendorHint : "",
+    "Pasted supplier listing:\n" + sourceText,
+  ].filter(Boolean).join("\n");
+  const schema = {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      vendor: { type: "string" },
+      vendorSku: { type: "string" },
+      manufacturer: { type: "string" },
+      description: { type: "string" },
+      packageName: { type: "string" },
+      category: categories.length ? { type: "string", enum: categories.concat([""]) } : { type: "string" },
+      priceBreaks: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { quantity: { type: "integer", minimum: 1 }, unitPrice: { type: "number", minimum: 0 } },
+          required: ["quantity", "unitPrice"],
+        },
+      },
+      shippingCost: { type: "number", minimum: 0, nullable: true },
+      stock: { type: "integer", minimum: 0, nullable: true },
+      leadTime: { type: "string" },
+    },
+    required: ["name", "vendor", "vendorSku", "manufacturer", "description", "packageName", "category", "priceBreaks", "leadTime"],
+  };
+  const result = callGeminiJson_(prompt, schema) || {};
+  const category = String(result.category || "").trim();
+  return {
+    name: String(result.name || "").slice(0, 160),
+    vendor: String(result.vendor || vendorHint || "").slice(0, 120),
+    vendorSku: String(result.vendorSku || "").slice(0, 160),
+    manufacturer: String(result.manufacturer || "").slice(0, 160),
+    description: String(result.description || "").slice(0, 1200),
+    packageName: String(result.packageName || "").slice(0, 120),
+    category: categories.indexOf(category) >= 0 ? category : "",
+    priceBreaks: arrayOrEmpty_(result.priceBreaks).slice(0, 50).map(function (row) {
+      return { quantity: Math.max(1, numberOrZero_(row.quantity)), unitPrice: Math.max(0, numberOrZero_(row.unitPrice)) };
+    }).filter(function (row) { return row.quantity && Number.isFinite(row.unitPrice); }),
+    shippingCost: result.shippingCost === null || result.shippingCost === undefined ? null : Math.max(0, numberOrZero_(result.shippingCost)),
+    stock: result.stock === null || result.stock === undefined ? null : Math.max(0, Math.floor(numberOrZero_(result.stock))),
+    leadTime: String(result.leadTime || "").slice(0, 160),
+    message: "Gemini drafted this from the pasted text only; no vendor webpage was fetched. Review every field before saving.",
+  };
+}
+
 function nextPlanningSemester_(date) {
   const month = date.getMonth() + 1;
   const year = date.getFullYear();
@@ -799,6 +957,8 @@ function fetchMouserQuotes_(component, quantity) {
       description: String(part.Description || ""),
       productUrl: String(part.ProductDetailUrl || ""),
       datasheetUrl: String(part.DataSheetUrl || ""),
+      category: String(part.Category || ""),
+      packageName: attributeValue_(part.ProductAttributes, "AttributeName", "AttributeValue", PACKAGE_ATTRIBUTE_PATTERN_),
       requestedQuantity: quantity,
       orderQuantity: orderQuantity,
       minimumOrderQuantity: minimum,
@@ -859,6 +1019,8 @@ function fetchDigiKeyQuotes_(component, quantity) {
         description: String(body.Description && (body.Description.ProductDescription || body.Description.DetailedDescription) || ""),
         productUrl: String(body.ProductUrl || ""),
         datasheetUrl: "",
+        category: String(body.Category && body.Category.Name || ""),
+        packageName: attributeValue_(body.Parameters, "ParameterText", "ValueText", PACKAGE_ATTRIBUTE_PATTERN_),
         requestedQuantity: quantity,
         orderQuantity: orderQuantity,
         minimumOrderQuantity: Math.max(1, numberOrZero_(product.MinimumOrderQuantity) || 1),
@@ -951,6 +1113,8 @@ function fetchNewarkQuotes_(component, quantity) {
       description: String(part.displayName || part.productOverview && part.productOverview.description || ""),
       productUrl: String(part.productURL || part.productUrl || ""),
       datasheetUrl: datasheets.length ? String(datasheets[0].url || "") : "",
+      category: "",
+      packageName: attributeValue_(part.attributes, "attributeLabel", "attributeValue", PACKAGE_ATTRIBUTE_PATTERN_),
       requestedQuantity: quantity,
       orderQuantity: orderQuantity,
       minimumOrderQuantity: minimum,
@@ -2195,7 +2359,7 @@ function apiFailure_(error) {
     "INVALID_INPUT", "INVALID_REQUEST_ID",
     "INVALID_SESSION", "INVALID_SNAPSHOT", "NOT_INITIALIZED", "SCHEMA_CONFLICT",
     "SCHEMA_ERROR", "SNAPSHOT_TOO_LARGE", "STATE_CORRUPT", "UNKNOWN_ACTION",
-    "SUPPLIER_UNAVAILABLE", "VERSION_CONFLICT",
+    "SUPPLIER_UNAVAILABLE", "SUPPLIER_NOT_CONFIGURED", "AI_NOT_CONFIGURED", "VERSION_CONFLICT",
   ];
   const code = error && safeCodes.indexOf(error.code) >= 0 ? error.code : "INTERNAL";
   const message = code === "INTERNAL"

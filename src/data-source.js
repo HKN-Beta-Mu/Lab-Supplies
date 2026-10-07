@@ -229,7 +229,10 @@
     baseData: null,
     authUser: null,
     backendUser: null,
-    capabilities: { gemini: { configured: false, canReadVendorUrls: false, inputMode: "paste" } },
+    capabilities: {
+      gemini: { configured: false, canReadVendorUrls: false, inputMode: "paste" },
+      suppliers: { mouser: false, digikey: false, newark: false },
+    },
     connectedUid: "",
     connectPromise: null,
     pending: null,
@@ -875,7 +878,10 @@
     get capabilities() {
       return isAppsScript
         ? clone(remote.capabilities)
-        : { gemini: { configured: false, canReadVendorUrls: false, inputMode: "paste" } };
+        : {
+          gemini: { configured: false, canReadVendorUrls: false, inputMode: "paste" },
+          suppliers: { mouser: false, digikey: false, newark: false },
+        };
     },
 
     get canEdit() {
@@ -945,6 +951,14 @@
 
     findReplacementComponents(payload) {
       return runEditorAction("findReplacementComponents", payload);
+    },
+
+    lookupVendorComponent(payload) {
+      return runEditorAction("lookupVendorComponent", payload);
+    },
+
+    parseNewComponentText(payload) {
+      return runEditorAction("parseNewComponentText", payload);
     },
 
     parseSupplierText(payload) {

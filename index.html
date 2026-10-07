@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-  <meta name="labkit-build" content="2026.10.06.18">
+  <meta name="labkit-build" content="2026.10.06.19">
 <title>LabKit · Component Procurement</title>
 <link rel="stylesheet" href="./src/auth.css">
 <script type="module" src="./src/firebase.js"></script>
@@ -65,7 +65,7 @@
 
 <aside id="labkit-auth-session" class="labkit-auth-session" aria-label="Signed-in account" hidden>
   <span id="labkit-session-user"></span>
-  <span class="labkit-build-id">v2026.10.06.18</span>
+  <span class="labkit-build-id">v2026.10.06.19</span>
   <button id="labkit-session-sign-out" type="button">Sign out</button>
 </aside>
 
@@ -1095,6 +1095,23 @@
           </sc-if>
 
           <sc-if value="{{ picker.creatingNow }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);background:var(--color-surface);padding:12px 14px;margin-bottom:14px">
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap"><b style="font-size:13px">Start from a vendor</b><span style="font-size:11px;color:var(--color-neutral-600)">Optional · name, price tiers and details are filled from the vendor’s own data for you to review</span></div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+                <div class="field" style="width:200px"><label>Vendor</label><select class="input" value="{{ picker.lookup.vendor }}" onChange="{{ picker.onLookupVendor }}"><template data-dc-control="for" list="{{ picker.lookupVendors }}" as="v" hint-placeholder-count="4"><option value="{{ v.id }}">{{ v.label }}</option></template></select></div>
+                <div class="field" style="flex:1;min-width:200px;{{ picker.lookupApiStyle }}"><label>{{ picker.lookupQueryLabel }}</label><input class="input" placeholder="{{ picker.lookupQueryHint }}" value="{{ picker.lookup.query }}" onInput="{{ picker.onLookupQuery }}"></div>
+                <div class="field" style="flex:1;min-width:200px;{{ picker.lookupOtherStyle }}"><label>Vendor name</label><input class="input" placeholder="Jameco, LCSC, Amazon…" value="{{ picker.lookup.otherName }}" onInput="{{ picker.onLookupOtherName }}"></div>
+                <button class="btn btn-secondary" onClick="{{ picker.lookupNow }}" style="{{ picker.lookupDisabledStyle }}">{{ picker.lookupLabel }}</button>
+              </div>
+              <div class="field" style="margin-top:10px;{{ picker.lookupOtherStyle }}"><label>Paste the product page text (title, part number, price tiers, stock…)</label><textarea class="input" rows="4" placeholder="Copy the listing from the vendor’s page and paste it here. LabKit does not open vendor webpages." value="{{ picker.lookup.text }}" onInput="{{ picker.onLookupText }}"></textarea></div>
+              <div style="{{ picker.lookupMessageStyle }}">{{ picker.lookup.message }}</div>
+              <template data-dc-control="for" list="{{ picker.candidates }}" as="k" hint-placeholder-count="3">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 10px;background:var(--color-bg);border:1px solid var(--color-divider);margin-top:6px">
+                  <div style="min-width:0"><b style="font-size:13px">{{ k.name }}</b> <span style="font-size:11px;color:var(--color-neutral-600)">{{ k.manufacturer }}</span><div style="font-size:11px;color:var(--color-neutral-700);margin-top:2px">{{ k.description }}</div><div style="font-size:10.5px;color:var(--color-neutral-600);margin-top:2px">{{ k.sku }} · {{ k.price }} · {{ k.stock }}</div></div>
+                  <button class="btn btn-secondary" onClick="{{ k.use }}" style="font-size:11.5px;padding:4px 9px;flex:none">Use this</button>
+                </div>
+              </template>
+            </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
               <div class="field" style="grid-column:1/-1"><label>Name / part number</label><input class="input" placeholder="e.g. 74HC00D or 4.7 kΩ 1%" value="{{ picker.draft.name }}" onInput="{{ picker.onName }}"></div>
               <div class="field"><label>Category</label><select class="input" value="{{ picker.formCategory }}" onChange="{{ picker.onCat }}"><template data-dc-control="for" list="{{ picker.formCategories }}" as="c" hint-placeholder-count="8"><option value="{{ c }}">{{ c }}</option></template></select></div>
@@ -1104,12 +1121,23 @@
               <div class="field"><label>Datasheet link</label><input class="input" type="url" placeholder="https://…" value="{{ picker.draft.datasheetUrl }}" onInput="{{ picker.onDatasheet }}"></div>
               <div class="field" style="grid-column:1/-1"><label>What it does</label><input class="input" placeholder="Quad 2-input NAND, surface mount — for the SMD soldering lab" value="{{ picker.draft.role }}" onInput="{{ picker.onRole }}"></div>
             </div>
+            <div style="border:1px solid var(--color-divider);background:var(--color-surface);padding:12px 14px;margin-top:14px">
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap"><b style="font-size:13px">Vendor listing</b><span style="font-size:11px;color:var(--color-neutral-600)">Optional</span></div>
+              <div style="font-size:11px;color:var(--color-neutral-600);margin:3px 0 10px;max-width:620px">{{ picker.listingNote }}</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
+                <div class="field"><label>Vendor</label><input class="input" placeholder="Jameco, Mouser, LCSC…" value="{{ picker.listing.vendor }}" onInput="{{ picker.onListingVendor }}"></div>
+                <div class="field"><label>Vendor SKU</label><input class="input" placeholder="Optional" value="{{ picker.listing.sku }}" onInput="{{ picker.onListingSku }}"></div>
+                <div class="field" style="grid-column:1/-1"><label>Product link</label><input class="input" type="url" placeholder="https://…" value="{{ picker.listing.productUrl }}" onInput="{{ picker.onListingUrl }}"></div>
+                <div class="field" style="grid-column:1/-1"><label>Price tiers · one per line</label><textarea class="input" rows="3" placeholder="1 = 0.50&#10;100 = 0.31&#10;500 = 0.24" value="{{ picker.listing.priceBreaks }}" onInput="{{ picker.onListingBreaks }}"></textarea></div>
+              </div>
+              <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:12px"><input type="checkbox" checked="{{ picker.listing.confirmed }}" onChange="{{ picker.onListingConfirm }}"> <span>I checked that this exact listing is this component</span></label>
+            </div>
             <div style="{{ picker.matchesStyle }}">
               <div style="font-size:12.5px;font-weight:700;color:var(--color-accent-900);margin-bottom:8px">{{ picker.matchesHeadline }}</div>
               <template data-dc-control="for" list="{{ picker.matches }}" as="m" hint-placeholder-count="3">
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 10px;background:var(--color-bg);border:1px solid var(--color-divider);margin-bottom:6px">
                   <div style="min-width:0"><b style="font-size:13px">{{ m.name }}</b> <span class="tag {{ m.levelClass }}">{{ m.levelLabel }}</span><div style="font-size:11px;color:var(--color-neutral-600);margin-top:2px">{{ m.cat }} · {{ m.detail }}</div><div style="font-size:11px;color:var(--color-neutral-700);margin-top:2px">{{ m.reason }}</div></div>
-                  <button class="btn btn-secondary" onClick="{{ m.use }}" style="{{ m.useStyle }}">{{ m.useLabel }}</button>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn btn-secondary" onClick="{{ m.addVendor }}" style="{{ m.addVendorStyle }}">{{ m.addVendorLabel }}</button><button class="btn btn-secondary" onClick="{{ m.use }}" style="{{ m.useStyle }}">{{ m.useLabel }}</button></div>
                 </div>
               </template>
             </div>
@@ -1767,6 +1795,7 @@ class Component extends DCLogic {
     if(c.entity==='alternative-model'){this.catalog=this.clone(c.before.catalog);this._alts=this.clone(c.before.alternatives);this.inventory=this.clone(c.before.inventory);this.supplierQuotes=this.clone(c.before.supplierQuotes);this.map={};this.catalog.forEach(p=>this.map[p.id]=p);}
     if(c.entity==='supplier-quotes')this.supplierQuotes=this.clone(c.before);
     if(c.entity==='vendor-choice')this.state.lineVendor=this.clone(c.before);
+    if(c.entity==='component-model'){this.catalog=this.clone(c.before.catalog);this.inventory=this.clone(c.before.inventory);this.supplierQuotes=this.clone(c.before.supplierQuotes);this.map={};this.catalog.forEach(p=>this.map[p.id]=p);}
     if(c.entity==='line-progress')this.state.lineProgress=this.clone(c.before);
     if(c.entity==='purchase-choice'){this.state.lineSubstitute=this.clone(c.before.lineSubstitute);this.state.lineVendor=this.clone(c.before.lineVendor);}
     if(c.entity==='terms'){this._terms=this.clone(c.before);this.termMap={};this._terms.forEach(t=>this.termMap[t.id]=t);}
@@ -2035,9 +2064,10 @@ class Component extends DCLogic {
       const ext=unit==null?null:unit*orderQty,shipKnown=q.shippingCost!==null&&q.shippingCost!==undefined&&q.shippingCost!=='',ship=shipKnown?Math.max(0,Number(q.shippingCost)||0):0;
       return{id:q.id,vendor:q.vendor,sku:q.vendorSku||'',unit,ext,landed:ext==null?null:ext+ship,landedKnown:ext!=null&&shipKnown,orderQty,lead,leadLabel:q.leadTime||'not stated',stock:q.available==null?null:Number(q.available)||0,dom:q.domestic!==false,ship,shipKnown,breaks,verified:false,manual:true,referenceOnly:q.referenceOnly===true||unit==null,seeded:q.seeded===true,estimate:false,source:'Officer-maintained listing',checkedAt:q.checkedAt,meetsRequirements:q.meetsRequirements,requirementsPending:q.requirementsPending===true,requirementReason:q.requirementReason||'',requirementScore:null,productUrl:q.productUrl||'',notes:q.notes||''};
     });
-    if(saved.some(v=>!v.referenceOnly&&Number.isFinite(v.ext)&&v.meetsRequirements!==false))return saved;
+    // Only a listing that is priced AND confirmed replaces the planning estimate; an unconfirmed one is still listed (and orderable) beside it.
+    if(saved.some(v=>!v.referenceOnly&&Number.isFinite(v.ext)&&v.meetsRequirements!==false&&!v.requirementsPending))return saved;
     const orderQty=Math.max(1,Number(qty)||1),unit=Math.max(0,Number(p.base)||0);
-    return [...saved,{id:'unsourced',vendor:'No supplier saved',sku:'',unit,ext:unit*orderQty,landed:unit*orderQty,landedKnown:false,orderQty,lead:999,leadLabel:'not sourced',stock:null,dom:true,ship:0,shipKnown:false,breaks:[],verified:false,manual:false,referenceOnly:false,estimate:true,source:'Planning placeholder only',checkedAt:null,meetsRequirements:null,requirementsPending:false,requirementReason:'Add an officer-maintained vendor listing before ordering.',productUrl:'',notes:''}];
+    return [...saved,{id:'unsourced',vendor:saved.length?'Estimate only · confirm a listing':'No supplier saved',sku:'',unit,ext:unit*orderQty,landed:unit*orderQty,landedKnown:false,orderQty,lead:999,leadLabel:'not sourced',stock:null,dom:true,ship:0,shipKnown:false,breaks:[],verified:false,manual:false,referenceOnly:false,estimate:true,source:'Planning placeholder only',checkedAt:null,meetsRequirements:null,requirementsPending:false,requirementReason:'Add an officer-maintained vendor listing before ordering.',productUrl:'',notes:''}];
   }
   quotePool(vs){ const saved=vs.filter(v=>(v.verified||v.manual)&&!v.referenceOnly&&Number.isFinite(v.ext)&&v.meetsRequirements!==false&&!v.requirementsPending); return saved.length?saved:vs.filter(v=>v.estimate); }
   cheapest(id,qty){ const vs=this.quotePool(this.vendors(id,qty)); return vs.reduce((a,b)=>(b.landed??b.ext)<(a.landed??a.ext)?b:a); }
@@ -2117,26 +2147,32 @@ class Component extends DCLogic {
     return found.sort((a,b)=>(a.level==='exact'?0:1)-(b.level==='exact'?0:1)).slice(0,limit);
   }
   // The only user-facing way a catalog component is created: Catalog, kit builder, order form and replacement flows all call it. (Seeded replacements are built at load time in ensureAlternativeCatalogEntry with deterministic ids.)
+  listingHasContent(d){if(!d||typeof d!=='object')return false;return Boolean(String(d.vendor||'').trim()||String(d.productUrl||'').trim()||String(d.sku||'').trim()||/\d+\s*(?:=|:|@|for)\s*\$?\d/.test(String(d.priceBreaks||'')));}
   createCatalogComponent(data,{record=true,summary=''}={}){
     const name=String(data&&data.name||'').trim().replace(/\s+/g,' ');
     if(!name)return{error:'Give the component a name first'};
     const matches=this.findComponentMatches({name}),exact=matches.find(m=>m.level==='exact');
     if(exact)return{part:exact.part,created:false,duplicate:true,matches};
-    const before=record?this.clone(this.catalog):null,cat=String(data.cat||'').trim()||(this.catalog[0]&&this.catalog[0].cat)||'Other',pkg=String(data.pkg||'').trim()||'—',mfr=String(data.mfr||'').trim()||'Unspecified',price=parseFloat(data.base);
+    let listing=null;
+    if(this.listingHasContent(data.vendorListing)){const built=this.buildManualQuote(data.vendorListing,null);if(built.error)return{error:built.error};listing=built.quote;}
+    const before=record?(listing?{catalog:this.clone(this.catalog),inventory:this.clone(this.inventory),supplierQuotes:this.clone(this.supplierQuotes)}:this.clone(this.catalog)):null,cat=String(data.cat||'').trim()||(this.catalog[0]&&this.catalog[0].cat)||'Other',pkg=String(data.pkg||'').trim()||'—',mfr=String(data.mfr||'').trim()||'Unspecified',price=parseFloat(data.base);
     let id='u'+this.hash(name+Date.now()+this.catalog.length).toString(36);while(this.map[id])id+='x';
     const part={id,name,cat,base:price>0?price:0.25,pkg,mfr,jameco:'',stock:0,role:String(data.role||'').trim()||(name+' — added manually.'),specs:[['Package',pkg],['Manufacturer',mfr]],note:'',flags:[]};
     if(String(data.datasheetUrl||'').trim())part.ds=String(data.datasheetUrl).trim();
     this.catalog.push(part);this.map[id]=part;
     this.inventory.components[id]=this.inventory.components[id]||{onHand:0,reserved:0,location:'',countedAt:'',note:''};
     this.supplierQuotes[id]=this.supplierQuotes[id]||[];
-    if(record)this.recordChange('create','catalog',id,before,this.catalog,summary||'Added '+name+' to the component catalog');
-    return{part,created:true,duplicate:false,matches};
+    if(listing)this.supplierQuotes[id]=[listing];
+    if(record&&listing)this.recordChange('create','component-model',id,before,{catalog:this.catalog,inventory:this.inventory,supplierQuotes:this.supplierQuotes},summary||'Added '+name+' to the component catalog with a '+listing.vendor+' listing');
+    else if(record)this.recordChange('create','catalog',id,before,this.catalog,summary||'Added '+name+' to the component catalog');
+    return{part,created:true,duplicate:false,matches,listing};
   }
   openPicker(mode,{originalId='',create=false,name=''}={}){
     const original=originalId&&this.map[originalId]||null,likeOriginal=mode==='alternative'&&original;
-    this.setState({picker:{mode,originalId:original?original.id:'',query:'',category:likeOriginal?original.cat:'All',creating:mode==='catalog'||Boolean(create),note:'',draft:{name,cat:original?original.cat:'',mfr:'',pkg:likeOriginal&&original.pkg!=='—'?original.pkg:'',base:likeOriginal&&original.base?String(original.base):'',role:'',datasheetUrl:''}}});
+    this.setState({picker:{mode,originalId:original?original.id:'',query:'',category:likeOriginal?original.cat:'All',creating:mode==='catalog'||Boolean(create),note:'',draft:{name,cat:original?original.cat:'',mfr:'',pkg:likeOriginal&&original.pkg!=='—'?original.pkg:'',base:likeOriginal&&original.base?String(original.base):'',role:'',datasheetUrl:''},listing:this.blankPickerListing(),lookup:{vendor:'Mouser',query:'',otherName:'',text:'',busy:false,message:'',candidates:[]}}});
+    this._pickerLookupToken=(this._pickerLookupToken||0)+1;
   }
-  closePicker(){this.setState({picker:null});}
+  closePicker(){this._pickerLookupToken=(this._pickerLookupToken||0)+1;this.setState({picker:null});}
   setPicker(patch){if(this.state.picker)this.setState({picker:{...this.state.picker,...patch}});}
   setPickerDraft(patch){const P=this.state.picker;if(P)this.setState({picker:{...P,draft:{...P.draft,...patch}}});}
   // Every picker mode resolves to a catalog component and ends here.
@@ -2147,13 +2183,75 @@ class Component extends DCLogic {
     if(P.mode==='alternative'){const original=this.map[P.originalId],saved=this.saveApprovedAlternative(P.originalId,{componentId:part.id,note:P.note});if(!saved){this.flash('Could not approve '+part.name+' as a replacement');return;}this.setState({picker:null});this.flash(part.name+' approved as a replacement for '+original.name+' · choose it from Procurement');return;}
     this.setState({picker:null});this.openPart(part.id);
   }
+  blankPickerListing(){return{vendor:'',sku:'',productUrl:'',priceBreaks:'',shippingCost:'',stock:'',leadTime:'',checkedAt:'',notes:'',domestic:true,compatibility:'unknown',source:''};}
+  setPickerListing(patch){const P=this.state.picker;if(P)this.setState({picker:{...P,listing:{...P.listing,...patch}}});}
+  setPickerLookup(patch){const P=this.state.picker;if(P)this.setState({picker:{...P,lookup:{...P.lookup,...patch}}});}
+  // Best-effort guesses from vendor text. Only categories that already exist in the catalog can be chosen; the officer reviews both.
+  guessCatalogCategory(text){
+    const have=new Set(this.catalog.map(p=>p.cat)),t=String(text||'').toLowerCase();
+    const rules=[['Optoelectronic',/\b(led|light[- ]emitting|photodiode|phototransistor|opto-?coupler|opto-?isolator|laser|display)\b/],['Potentiometer',/potentiometer|trimmer|trimpot/],['Op-Amp',/op[- ]?amp|operational amplifier|comparator/],['Transistor',/transistor|mosfet|\bbjt\b|\bjfet\b/],['Diode',/diode|rectifier|zener|schottky/],['Inductor',/inductor|choke|ferrite/],['Sensor',/sensor|thermistor|accelerometer|photocell/],['Passive R',/resistor/],['Passive C',/capacitor/],['Electromech.',/\b(switch|relay|connector|header|socket|buzzer|speaker|motor)\b/],['Breadboard',/breadboard/],['Wire',/\b(wire|cable)\b/],['Logic IC',/logic|\bgate\b|flip-?flop|counter|decoder|multiplexer|inverter|\bnand\b|\bnor\b|shift register|\b(74|cd4)[a-z]*\d{2,}/]];
+    const hit=rules.find(([cat,re])=>have.has(cat)&&re.test(t));return hit?hit[0]:'';
+  }
+  guessPackage(text){const m=String(text||'').match(/\b(SOIC-?\d+|TSSOP-?\d+|SSOP-?\d+|SOP-?\d+|SOT-?\d+(?:-\d+)?|P?DIP-?\d+|TO-?\d+[A-Z]*|QFN-?\d+|LQFP-?\d+|0201|0402|0603|0805|1206|axial|radial)\b/i);return m?m[1].toUpperCase().replace(/^(SOIC|TSSOP|SSOP|SOP|PDIP|DIP|QFN|LQFP)(\d)/,'$1-$2'):'';}
+  // A different component that already carries the same vendor SKU (or the part number the officer typed), even under a different name.
+  findListingMatches(listing,draft){
+    const sku=String(listing&&listing.sku||'').trim().toLowerCase(),vendor=String(listing&&listing.vendor||'').trim().toLowerCase(),mpn=this.componentLooseKey(draft&&draft.name),found=[];
+    this.catalog.forEach(p=>{
+      const quote=(this.supplierQuotes[p.id]||[]).find(q=>sku&&String(q.vendorSku||'').trim().toLowerCase()===sku&&(!vendor||String(q.vendor||'').trim().toLowerCase()===vendor)||mpn.length>=4&&this.componentLooseKey(q.manufacturerPartNumber)===mpn);
+      if(quote)found.push({part:p,reason:'Already listed under this name with '+(quote.vendor||'a vendor')+(quote.vendorSku?' SKU '+quote.vendorSku:'')});
+      else if(sku&&String(p.jameco||'').trim().toLowerCase()===sku)found.push({part:p,reason:'Already saved with the same Jameco part number'});
+    });
+    return found;
+  }
+  async pickerLookup(){
+    const P=this.state.picker;if(!P)return;const L=P.lookup,source=window.LabKitDataSource,token=++this._pickerLookupToken;
+    if(L.vendor==='Other'){
+      const text=String(L.text||'').trim();
+      if(!text){this.setPickerLookup({message:'Paste the vendor’s product listing text first.'});return;}
+      if(!source||!source.parseNewComponentText){this.setPickerLookup({message:'Paste-to-fill needs the deployed Apps Script backend. You can still type the vendor details below.'});return;}
+      this.setPickerLookup({busy:true,message:'Gemini is extracting only facts present in the pasted text…'});
+      try{
+        const result=await source.parseNewComponentText({text,vendor:L.otherName,categories:[...new Set(this.catalog.map(p=>p.cat))]});
+        if(token!==this._pickerLookupToken||!this.state.picker)return;
+        this.pickerApplyCandidate({vendor:result.vendor||L.otherName,vendorSku:result.vendorSku,name:result.name,manufacturer:result.manufacturer,description:result.description,category:result.category,packageName:result.packageName,productUrl:'',datasheetUrl:'',available:result.stock,leadTime:result.leadTime,priceBreaks:result.priceBreaks,unitPrice:(result.priceBreaks||[])[0]&&result.priceBreaks[0].unitPrice,source:'Gemini draft from pasted '+(result.vendor||L.otherName||'vendor')+' listing'},result.message+' Add the product link, then check the price tiers.');
+      }catch(error){if(token!==this._pickerLookupToken||!this.state.picker)return;this.setPickerLookup({busy:false,message:error&&error.code==='UNKNOWN_ACTION'?'The backend needs to be redeployed with the vendor lookup update.':error&&error.message||'Gemini could not extract this listing.'});}
+      return;
+    }
+    const query=String(L.query||P.draft.name||'').trim();
+    if(!query){this.setPickerLookup({message:'Enter a part number, vendor SKU, or keyword first.'});return;}
+    if(!source||!source.lookupVendorComponent){this.setPickerLookup({message:'Vendor lookup needs the deployed Apps Script backend. You can still type the vendor details below.'});return;}
+    const configured=(source.capabilities&&source.capabilities.suppliers||{})[L.vendor.toLowerCase()];
+    if(configured===false){this.setPickerLookup({message:L.vendor+' is not configured on the backend. Add its API credentials in Apps Script Project Settings, or type the details below.'});return;}
+    this.setPickerLookup({busy:true,message:'Asking '+L.vendor+'…',candidates:[]});
+    try{
+      const result=await source.lookupVendorComponent({vendor:L.vendor,query});
+      if(token!==this._pickerLookupToken||!this.state.picker)return;
+      const candidates=Array.isArray(result.candidates)?result.candidates:[];
+      this.setPickerLookup({busy:false,candidates,message:result.message||(candidates.length+' result'+(candidates.length===1?'':'s'))});
+      if(candidates.length===1)this.pickerApplyCandidate(candidates[0],'One match found and filled in. Review it before saving.');
+    }catch(error){if(token!==this._pickerLookupToken||!this.state.picker)return;this.setPickerLookup({busy:false,message:error&&error.code==='UNKNOWN_ACTION'?'The backend needs to be redeployed with the vendor lookup update.':error&&error.message||'Vendor lookup failed.'});}
+  }
+  pickerApplyCandidate(c,message){
+    const P=this.state.picker;if(!P||!c)return;const d=P.draft,today=new Date().toISOString().slice(0,10),first=Number(c.unitPrice!=null?c.unitPrice:(c.priceBreaks||[])[0]&&c.priceBreaks[0].unitPrice),text=[c.category,c.name,c.description].join(' ');
+    const draft={...d,name:c.name||d.name,mfr:c.manufacturer||d.mfr,pkg:c.packageName||this.guessPackage(text)||d.pkg,cat:c.category&&this.catalog.some(p=>p.cat===c.category)?c.category:(this.guessCatalogCategory(text)||d.cat),base:first>0?String(first):d.base,role:c.description||d.role,datasheetUrl:c.datasheetUrl||d.datasheetUrl};
+    const listing={...P.listing,vendor:c.vendor||P.listing.vendor,sku:c.vendorSku||'',productUrl:c.productUrl||'',priceBreaks:(c.priceBreaks||[]).map(b=>b.quantity+' = '+b.unitPrice).join('\n'),stock:c.available==null?'':c.available,leadTime:c.leadTime||'',checkedAt:today,source:(c.source||c.vendor||'Vendor lookup')+' · looked up '+today,notes:P.listing.notes||'Filled from '+(c.vendor||'vendor')+' on '+today+'. Package and category are best-effort guesses.',compatibility:'unknown'};
+    this.setState({picker:{...P,draft,listing,lookup:{...P.lookup,busy:false,candidates:[],message:message||'Filled from '+(c.vendor||'the vendor')+'. Review every field, then create the component.'}}});
+  }
+  pickerAddListingToExisting(part){
+    const P=this.state.picker;if(!P||!part)return;
+    const result=this.addVendorListing(part.id,P.listing);
+    if(result.error){this.flash(result.error);return;}
+    this.forceUpdate();this.flash(result.quote.vendor+' listing '+(result.replaced?'updated on ':'added to ')+part.name);
+  }
   pickerCreate(){
     const P=this.state.picker;if(!P)return;const d=P.draft,name=String(d.name||'').trim();
     if(!name){this.flash('Give the component a name first');return;}
     const exact=this.findComponentMatches({name}).find(m=>m.level==='exact');
     if(exact){this.flash(exact.part.name+' is already in the component list — use that one');return;}
-    if(P.mode==='alternative'){const saved=this.saveApprovedAlternative(P.originalId,{pn:name,cat:d.cat,mfr:d.mfr,pkg:d.pkg,base:d.base,role:d.role,datasheetUrl:d.datasheetUrl,note:P.note});if(!saved){this.flash('Could not add that replacement');return;}this.setState({picker:null});this.flash(name+' added to the component list and approved as a replacement');return;}
-    const made=this.createCatalogComponent(d);if(!made.part||made.duplicate){this.flash(made.error||'Could not add the component');return;}
+    const vendorListing=this.listingHasContent(P.listing)?P.listing:null;
+    if(vendorListing){const check=this.buildManualQuote(vendorListing,null);if(check.error){this.flash(check.error+' (vendor listing) — or clear the vendor fields to create without one');return;}}
+    if(P.mode==='alternative'){const saved=this.saveApprovedAlternative(P.originalId,{pn:name,cat:d.cat,mfr:d.mfr,pkg:d.pkg,base:d.base,role:d.role,datasheetUrl:d.datasheetUrl,note:P.note,vendorListing});if(!saved){this.flash('Could not add that replacement');return;}this.setState({picker:null});this.flash(name+' added to the component list and approved as a replacement');return;}
+    const made=this.createCatalogComponent({...d,vendorListing});if(!made.part||made.duplicate){this.flash(made.error||'Could not add the component');return;}
     if(P.mode==='catalog'){this.setState({picker:null,catQuery:''});this.flash(name+' added to the component list');return;}
     this.pickerUse(made.part,{created:true});
   }
@@ -2182,7 +2280,7 @@ class Component extends DCLogic {
       const match=this.findComponentMatches({name:typed}).find(m=>m.level==='exact');
       if(match&&match.part.id===originalId)return null;
       if(match)target=match.part;
-      else{const made=this.createCatalogComponent({name:typed,cat:data.cat||original.cat,mfr:data.mfr,pkg:data.pkg||original.pkg,base:data.base!=null&&data.base!==''?data.base:original.base,role:data.role||'Approved alternative for '+original.name+'. '+String(data.note||'Verify the saved compatibility note before ordering.'),datasheetUrl:data.datasheetUrl},{record:false});if(!made.part){this._alts=before.alternatives;return null;}target=made.part;created=made.created;}
+      else{const made=this.createCatalogComponent({name:typed,cat:data.cat||original.cat,mfr:data.mfr,pkg:data.pkg||original.pkg,base:data.base!=null&&data.base!==''?data.base:original.base,role:data.role||'Approved alternative for '+original.name+'. '+String(data.note||'Verify the saved compatibility note before ordering.'),datasheetUrl:data.datasheetUrl,vendorListing:data.vendorListing},{record:false});if(!made.part){this._alts=before.alternatives;return null;}target=made.part;created=made.created;}
     }
     if(!existing)existing=list.find(a=>a.componentId===target.id);
     const alternative={...(existing||{}),pn:target.name,mfr:target.mfr||'Unspecified',pkg:target.pkg||original.pkg||'—',match:data.match||'yours',matchLabel:data.matchLabel||'Officer verified',note:String(data.note||'').trim()||'Added as an officer-verified equivalent.',unit:'Price not checked',vendor:data.vendor||'Manual record',url:data.url||'',datasheetUrl:data.datasheetUrl||target.ds||'',componentId:target.id};
@@ -2320,7 +2418,7 @@ class Component extends DCLogic {
       if(!source||!source.refreshSupplierQuotes)throw Object.assign(new Error('Supplier APIs are available after the Apps Script deployment is updated.'),{code:'REMOTE_ONLY'});
       const result=await source.refreshSupplierQuotes({componentId:id,quantity});
       const manual=(this.supplierQuotes[id]||[]).filter(q=>q&&q.manual===true);
-      this.supplierQuotes[id]=[...manual,...(Array.isArray(result.quotes)?result.quotes:[])];
+      const saved=new Set(manual.filter(q=>q.vendorSku).map(q=>String(q.vendor).toLowerCase()+'|'+q.vendorSku));this.supplierQuotes[id]=[...manual,...(Array.isArray(result.quotes)?result.quotes:[]).filter(q=>!saved.has(String(q.vendor).toLowerCase()+'|'+q.vendorSku))];
       const providerNote=(result.providerMessages||[]).length?' '+result.providerMessages.join(' '):'';
       this.setState({quoteLoading:false,quoteMessage:(result.aiMessage||'Verified quotes refreshed.')+providerNote});
       this.flash(this.supplierQuotes[id].length+' verified quote'+(this.supplierQuotes[id].length===1?'':'s')+' refreshed');
@@ -2346,17 +2444,34 @@ class Component extends DCLogic {
     }catch(error){this.setState({supplierAiBusy:false,supplierAiMessage:error&&error.message||'Gemini could not extract this listing.'});}
   }
 
-  saveManualSupplier(){
-    const id=this.state.pricingPartId,d=this.state.supplierDraft||{},vendor=String(d.vendor||'').trim(),url=String(d.productUrl||'').trim();
-    if(!vendor){this.flash('Enter the supplier name');return;}
-    if(!url){this.flash('Add the product link so the price can be checked later');return;}
-    try{const parsed=new URL(url);if(!['http:','https:'].includes(parsed.protocol))throw new Error();}catch(_){this.flash('Enter a valid http or https product link');return;}
+  // Validates a vendor-listing draft and builds the officer-maintained quote. Used by the vendor form and by "add a new component with a vendor".
+  buildManualQuote(d,existing){
+    const vendor=String(d.vendor||'').trim(),url=String(d.productUrl||'').trim();
+    if(!vendor)return{error:'Enter the supplier name'};
+    if(!url)return{error:'Add the product link so the price can be checked later'};
+    try{const parsed=new URL(url);if(!['http:','https:'].includes(parsed.protocol))throw new Error();}catch(_){return{error:'Enter a valid http or https product link'};}
     const raw=String(d.priceBreaks||''),breaks=[];let match;const re=/(\d+)\s*(?:=|:|@|for)\s*\$?([0-9]+(?:\.[0-9]+)?)/gi;
     while((match=re.exec(raw)))breaks.push({quantity:Math.max(1,parseInt(match[1])||1),unitPrice:Math.max(0,Number(match[2])||0),currency:'USD'});
     breaks.sort((a,b)=>a.quantity-b.quantity);
-    const before=this.clone(this.supplierQuotes),list=this.supplierQuotes[id]||[],existing=list.find(q=>q.id===this.state.supplierEditingId);
     const specifications=String(d.listingSpecs||'').split(/\n+/).map(line=>{const parts=line.split(/\s*(?:=|:)\s*/,2);return parts.length===2?[parts[0].trim().slice(0,120),parts[1].trim().slice(0,300)]:null;}).filter(Boolean),compatibility=d.compatibility||'unknown';
-    const quote={id:existing&&existing.id||('manual-'+Date.now().toString(36)),vendor,vendorSku:String(d.sku||'').trim(),productUrl:url,priceBreaks:breaks,unitPrice:breaks.length?breaks[0].unitPrice:null,minimumOrderQuantity:breaks.length?breaks[0].quantity:1,orderMultiple:1,shippingCost:String(d.shippingCost??'').trim()===''?null:Math.max(0,Number(d.shippingCost)||0),available:String(d.stock||'').trim()===''?null:Math.max(0,Number(d.stock)||0),leadTime:String(d.leadTime||'').trim()||'check supplier',checkedAt:(d.checkedAt?new Date(d.checkedAt+'T12:00:00').toISOString():new Date().toISOString()),notes:String(d.notes||'').trim(),specifications,domestic:d.domestic!==false,meetsRequirements:compatibility==='compatible'?true:compatibility==='incompatible'?false:null,requirementsPending:compatibility==='unknown',requirementReason:String(d.compatibilityReason||'').trim()||(compatibility==='compatible'?'Officer marked this listing compatible.':compatibility==='incompatible'?'This listing conflicts with a saved requirement.':'Compatibility has not been confirmed.'),manual:true,verified:false,autoRefresh:false,referenceOnly:breaks.length===0,source:breaks.length?'Officer-maintained price table':'Officer-maintained product link'};
+    const quote={id:existing&&existing.id||('manual-'+Date.now().toString(36)),vendor,vendorSku:String(d.sku||'').trim(),productUrl:url,priceBreaks:breaks,unitPrice:breaks.length?breaks[0].unitPrice:null,minimumOrderQuantity:breaks.length?breaks[0].quantity:1,orderMultiple:1,shippingCost:String(d.shippingCost??'').trim()===''?null:Math.max(0,Number(d.shippingCost)||0),available:String(d.stock??'').trim()===''?null:Math.max(0,Number(d.stock)||0),leadTime:String(d.leadTime||'').trim()||'check supplier',checkedAt:(d.checkedAt?new Date(d.checkedAt+'T12:00:00').toISOString():new Date().toISOString()),notes:String(d.notes||'').trim(),specifications,domestic:d.domestic!==false,meetsRequirements:compatibility==='compatible'?true:compatibility==='incompatible'?false:null,requirementsPending:compatibility==='unknown',requirementReason:String(d.compatibilityReason||'').trim()||(compatibility==='compatible'?'Officer marked this listing compatible.':compatibility==='incompatible'?'This listing conflicts with a saved requirement.':'Compatibility has not been confirmed.'),manual:true,verified:false,autoRefresh:false,referenceOnly:breaks.length===0,source:String(d.source||'').trim()||(breaks.length?'Officer-maintained price table':'Officer-maintained product link')};
+    return{quote,breaks};
+  }
+  // Adds (or, for the same vendor SKU, refreshes) an officer-maintained listing on an existing component.
+  addVendorListing(componentId,d,{record=true}={}){
+    if(!this.map[componentId])return{error:'That component no longer exists'};
+    const built=this.buildManualQuote(d,null);if(built.error)return built;
+    const before=this.clone(this.supplierQuotes),list=this.supplierQuotes[componentId]||[],same=q=>q.manual===true&&String(q.vendor).toLowerCase()===built.quote.vendor.toLowerCase()&&built.quote.vendorSku&&String(q.vendorSku||'').toLowerCase()===built.quote.vendorSku.toLowerCase(),replaced=list.find(same);
+    if(replaced)built.quote.id=replaced.id;
+    this.supplierQuotes[componentId]=replaced?list.map(q=>q===replaced?built.quote:q):[...list,built.quote];
+    if(record)this.recordChange(replaced?'edit':'create','supplier-quotes',componentId,before,this.supplierQuotes,(replaced?'Updated ':'Added ')+built.quote.vendor+' listing for '+this.map[componentId].name);
+    return{quote:built.quote,replaced:Boolean(replaced)};
+  }
+  saveManualSupplier(){
+    const id=this.state.pricingPartId,d=this.state.supplierDraft||{},vendor=String(d.vendor||'').trim();
+    const before=this.clone(this.supplierQuotes),list=this.supplierQuotes[id]||[],existing=list.find(q=>q.id===this.state.supplierEditingId);
+    const built=this.buildManualQuote(d,existing);if(built.error){this.flash(built.error);return;}
+    const {quote,breaks}=built;
     this.supplierQuotes[id]=existing?list.map(q=>q.id===existing.id?quote:q):[...list,quote];
     this.recordChange(existing?'edit':'create','supplier-quotes',id,before,this.supplierQuotes,(existing?'Updated ':'Added ')+vendor+' pricing for '+(this.map[id]||{}).name);
     this.setState({supplierFormOpen:false,supplierEditingId:null,quoteMessage:breaks.length?'Manual supplier pricing saved. It will be compared at the requested quantity and remains marked for manual checking.':'Supplier link saved without a price. It will not enter cheapest-source calculations until a price tier is added.'});
@@ -2827,9 +2942,12 @@ class Component extends DCLogic {
           return{name:x.name,cat:x.cat,detail:detail(x),meta:meta.join(' · '),metaStyle:meta.length?'font-size:10.5px;color:var(--color-accent-700);margin-top:3px':'display:none',blocked,blockedStyle:blocked?'font-size:11px;color:var(--color-neutral-600);font-weight:600;flex:none':'display:none',useLabel,useStyle:useStyle(blocked),use:()=>this.pickerUse(x)};});
         if(P0.mode==='order'&&P0.category==='All'){const terms=this.componentTextKey(P0.query).split(' ').filter(Boolean);(this.bagTypes||[]).filter(b=>terms.every(t=>this.componentTextKey('packaging '+b.name+' '+(b.size||'')).includes(t))).forEach(b=>pickerResults.push({name:'Packaging · '+b.name,cat:'Packaging',detail:b.size||'Size not entered',meta:'',metaStyle:'display:none',blocked:'',blockedStyle:'display:none',useLabel,useStyle:useStyle(false),use:()=>this.pickerUse({id:'bag:'+b.id,name:'Packaging · '+b.name})}));}
       }
-      if(P0.creating)pickerMatches=this.findComponentMatches(P0.draft).map(m=>{const x=m.part,blocked=blockedReason(x),exact=m.level==='exact';return{name:x.name,cat:x.cat,detail:detail(x),levelLabel:exact?'Already in the list':'Similar',levelClass:exact?'tag-accent':'tag-outline',reason:blocked||m.reason,useLabel:P0.mode==='catalog'?'Open it':useLabel,useStyle:blocked?'display:none':useStyle(false),use:()=>this.pickerUse(x)};});
+      const listingReady=this.listingHasContent(P0.listing)&&!this.buildManualQuote(P0.listing,null).error,addVendorStyle=listingReady?'font-size:11.5px;padding:4px 9px;flex:none':'display:none';
+      const matchRow=(x,levelLabel,levelClass,reason)=>{const blocked=blockedReason(x);return{name:x.name,cat:x.cat,detail:detail(x),levelLabel,levelClass,reason:blocked||reason,useLabel:P0.mode==='catalog'?'Open it':useLabel,useStyle:blocked?'display:none':useStyle(false),use:()=>this.pickerUse(x),addVendorLabel:'Add this vendor listing to it',addVendorStyle,addVendor:()=>this.pickerAddListingToExisting(x)};};
+      if(P0.creating){const byName=this.findComponentMatches(P0.draft),named=new Set(byName.map(m=>m.part.id));
+        pickerMatches=[...byName.filter(m=>m.level==='exact').map(m=>matchRow(m.part,'Already in the list','tag-accent',m.reason)),...this.findListingMatches(P0.listing,P0.draft).filter(m=>!named.has(m.part.id)).map(m=>matchRow(m.part,'Same vendor part','tag-accent',m.reason)),...byName.filter(m=>m.level!=='exact').map(m=>matchRow(m.part,'Similar','tag-outline',m.reason))].slice(0,6);}
     }
-    const pickerHasExact=pickerMatches.some(m=>m.levelLabel==='Already in the list'),pickerQuery=String(P0.query||'').trim();
+    const pickerHasExact=pickerMatches.some(m=>m.levelLabel==='Already in the list'),pickerHasVendorPart=pickerMatches.some(m=>m.levelLabel==='Same vendor part'),pickerQuery=String(P0.query||'').trim();
     const pickerTab=active=>`border:1px solid var(--color-divider);border-right-width:0;background:${active?'var(--color-accent)':'var(--color-surface)'};color:${active?'var(--color-bg)':'var(--color-text)'};font-size:12px;font-weight:600;padding:7px 14px;cursor:pointer`;
     const picker={open:pickerOpen,stop:e=>e.stopPropagation(),close:()=>this.closePicker(),
       title:{kit:'Add a component to '+pickerKitCode,order:'Choose a component for the order',alternative:'Find or add a replacement for '+(pickerOriginal?pickerOriginal.name:'this part'),catalog:'Add a component to the list'}[P0.mode]||'Components',
@@ -2841,7 +2959,18 @@ class Component extends DCLogic {
       emptyStyle:pickerResults.length?'display:none':'padding:16px;border:1px dashed var(--color-divider);font-size:12.5px;color:var(--color-neutral-700);margin-top:10px',emptyText:pickerQuery?'Nothing in the component list matches “'+pickerQuery+'”.':'The component list is empty.',createFromQuery:()=>this.setPicker({creating:true,draft:{...P0.draft,name:pickerQuery||P0.draft.name}}),createFromQueryLabel:pickerQuery?'Create “'+pickerQuery+'”':'Create a new component',
       draft:P0.draft,formCategories:pickerCategories,formCategory:P0.draft.cat||pickerCategories[0]||'',onName:e=>this.setPickerDraft({name:e.target.value}),onCat:e=>this.setPickerDraft({cat:e.target.value}),onMfr:e=>this.setPickerDraft({mfr:e.target.value}),onPkg:e=>this.setPickerDraft({pkg:e.target.value}),onBase:e=>this.setPickerDraft({base:e.target.value}),onRole:e=>this.setPickerDraft({role:e.target.value}),onDatasheet:e=>this.setPickerDraft({datasheetUrl:e.target.value}),
       matches:pickerMatches,matchesStyle:pickerMatches.length?'border-left:3px solid var(--color-accent);background:var(--color-accent-100);padding:11px 13px;margin-top:12px':'display:none',
-      matchesHeadline:pickerHasExact?'This component is already in the list — use it instead of creating a duplicate.':'Similar components already exist. Check them before creating a new one.',
+      matchesHeadline:pickerHasExact?'This component is already in the list — use it instead of creating a duplicate.':pickerHasVendorPart?'This vendor part is already saved on another component. Add the vendor there instead of creating a duplicate.':'Similar components already exist. Check them before creating a new one.',
+
+      lookupVendors:['Mouser','DigiKey','Newark'].map(v=>({id:v,label:v+(window.LabKitDataSource&&window.LabKitDataSource.lookupVendorComponent&&((window.LabKitDataSource.capabilities||{}).suppliers||{})[v.toLowerCase()]===false?' (not configured)':'')})).concat([{id:'Other',label:'Other vendor (paste listing)'}]),
+      lookup:P0.lookup||{vendor:'Mouser',query:'',otherName:'',text:'',busy:false,message:'',candidates:[]},
+      onLookupVendor:e=>this.setPickerLookup({vendor:e.target.value,message:'',candidates:[]}),onLookupQuery:e=>this.setPickerLookup({query:e.target.value}),onLookupOtherName:e=>{const P=this.state.picker;if(P)this.setState({picker:{...P,lookup:{...P.lookup,otherName:e.target.value},listing:{...P.listing,vendor:e.target.value}}});},onLookupText:e=>this.setPickerLookup({text:e.target.value}),
+      lookupApiStyle:(P0.lookup||{}).vendor==='Other'?'display:none':'',lookupQueryLabel:(P0.lookup||{}).vendor==='DigiKey'?'Exact part number or DigiKey SKU':'Part number, vendor SKU or keyword',lookupQueryHint:(P0.lookup||{}).vendor==='DigiKey'?'e.g. SN74HCT20N':'e.g. SN74HCT20N or a keyword',lookupOtherStyle:(P0.lookup||{}).vendor==='Other'?'':'display:none',
+      lookupLabel:(P0.lookup||{}).busy?'Working…':(P0.lookup||{}).vendor==='Other'?'Fill from pasted text':'Look up & fill',lookupDisabledStyle:(P0.lookup||{}).busy?'opacity:.5;pointer-events:none':'',lookupNow:()=>this.pickerLookup(),
+      lookupMessageStyle:(P0.lookup||{}).message?'font-size:11.5px;color:var(--color-neutral-700);margin-top:8px':'display:none',
+      candidates:((P0.lookup||{}).candidates||[]).map(c=>{const first=Number(c.unitPrice!=null?c.unitPrice:(c.priceBreaks||[])[0]&&c.priceBreaks[0].unitPrice);return{name:c.name||c.vendorSku,manufacturer:c.manufacturer||'Manufacturer not listed',description:c.description||'No description returned',sku:(c.vendor||'')+(c.vendorSku?' · '+c.vendorSku:''),price:first>=0&&Number.isFinite(first)?this.mu(first)+' @ '+((c.priceBreaks||[])[0]?c.priceBreaks[0].quantity:1):'No price',stock:c.available==null?'Stock not stated':this.num(c.available)+' in stock',use:()=>this.pickerApplyCandidate(c)};}),
+      listing:{...(P0.listing||this.blankPickerListing()),confirmed:(P0.listing||{}).compatibility==='compatible'},
+      onListingVendor:e=>this.setPickerListing({vendor:e.target.value}),onListingSku:e=>this.setPickerListing({sku:e.target.value}),onListingUrl:e=>this.setPickerListing({productUrl:e.target.value}),onListingBreaks:e=>this.setPickerListing({priceBreaks:e.target.value}),onListingConfirm:e=>this.setPickerListing({compatibility:e.target.checked?'compatible':'unknown'}),
+      listingNote:'Optional. Saved as an officer-maintained vendor listing on the new component. An unconfirmed listing can still be ordered from Procurement, but it is left out of “cheapest source” prices until you confirm it.',
       noteStyle:pickerIsAlt?'margin-top:12px':'display:none',note:P0.note,onNote:e=>this.setPicker({note:e.target.value}),
       createLabel:{kit:'Create and add to kit',order:'Create and select',alternative:'Create and approve as replacement',catalog:'Add to component list'}[P0.mode]||'Create',createStyle:pickerHasExact?'opacity:.45;pointer-events:none':'',create:()=>this.pickerCreate(),
       dsNote:'Paste a datasheet link if you have one; it is saved on the component.'};

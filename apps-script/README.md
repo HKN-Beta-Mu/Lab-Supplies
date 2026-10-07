@@ -209,6 +209,14 @@ future semesters are retained.
   supplier descriptions with per-kit requirements, but it never invents or
   changes a supplier price. Shipping is not assumed when the supplier API does
   not return it.
+- **Adding a component from a vendor.** In the component dialog an officer can pick
+  Mouser, DigiKey, or Newark, enter a part number or SKU, and fill the new
+  component and its vendor listing from that supplier's API (`lookupVendorComponent`).
+  For vendors without an API (for example Jameco) they paste the listing text and
+  Gemini drafts the fields from that text only (`parseNewComponentText`); no vendor
+  webpage is opened. These actions need this update deployed as a new version, and
+  each supplier needs its own credentials above. Without them the vendor fields
+  can still be typed by hand.
 - **Estimates stay labeled.** Existing design estimates remain useful before
   credentials are configured, but a verified acceptable API quote takes
   priority in cheapest-price calculations.
