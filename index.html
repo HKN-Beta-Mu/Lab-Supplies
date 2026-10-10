@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-  <meta name="labkit-build" content="2026.10.06.23">
+  <meta name="labkit-build" content="2026.10.06.25">
 <title>LabKit · Component Procurement</title>
 <link rel="stylesheet" href="./src/auth.css">
 <script type="module" src="./src/firebase.js"></script>
@@ -65,7 +65,7 @@
 
 <aside id="labkit-auth-session" class="labkit-auth-session" aria-label="Signed-in account" hidden>
   <span id="labkit-session-user"></span>
-  <span class="labkit-build-id">v2026.10.06.23</span>
+  <span class="labkit-build-id">v2026.10.06.25</span>
   <button id="labkit-session-sign-out" type="button">Sign out</button>
 </aside>
 
@@ -103,8 +103,8 @@
       <button class="btn btn-secondary btn-icon sidebar-close" aria-label="Close navigation" onClick="{{ toggleSidebar }}">✕</button>
     </div>
     <div style="flex:1;overflow:auto;padding:14px 12px">
-      <div style="font-size:10px;letter-spacing:0.11em;text-transform:uppercase;color:var(--color-neutral-600);padding:0 6px 8px">All semesters</div>
       <template data-dc-control="for" list="{{ gnav }}" as="g" hint-placeholder-count="9">
+        <div style="{{ g.sectionStyle }}">{{ g.section }}</div>
         <button onClick="{{ g.go }}" style="{{ g.style }}">
           <span>{{ g.label }}</span>
           <span style="{{ g.metaStyle }}">{{ g.meta }}</span>
@@ -880,8 +880,9 @@
       </sc-if>
 
       <sc-if value="{{ vCombine }}" hint-placeholder-val="{{ false }}">
+        <nav aria-label="Ordering" style="display:flex;gap:4px;border-bottom:2px solid var(--color-divider);margin-bottom:20px"><template data-dc-control="for" list="{{ orderingTabs }}" as="t" hint-placeholder-count="2"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button></template></nav>
         <div style="border:1px solid var(--color-divider);background:var(--color-surface);padding:15px 16px;margin-bottom:20px">
-          <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:9px">Combine semesters into one purchase</div>
+          <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:9px">1 · Choose the semesters to buy for (one or several)</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <template data-dc-control="for" list="{{ comb.terms }}" as="t" hint-placeholder-count="8"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button></template>
           </div>
@@ -891,7 +892,7 @@
             <div style="font-size:11px;color:var(--color-neutral-600);padding-bottom:8px">Filters change the review table only; creating an order still includes every required line.</div>
           </div>
         </div>
-        <div class="summary-strip" style="display:flex;border:1px solid var(--color-divider);margin-bottom:20px">
+        <div class="summary-strip" style="display:flex;flex-wrap:wrap;border:1px solid var(--color-divider);margin-bottom:20px">
           <template data-dc-control="for" list="{{ comb.summary }}" as="c" hint-placeholder-count="5">
             <div style="flex:1;padding:13px 16px;border-right:1px solid var(--color-divider)">
               <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;color:{{ c.color }}">{{ c.val }}</div>
@@ -899,6 +900,20 @@
             </div>
           </template>
         </div>
+        <h4 style="margin:0 0 4px">2 · Kit economics: cost, profit and price change</h4>
+        <div style="font-size:11.5px;color:var(--color-neutral-600);margin-bottom:10px;max-width:980px">{{ comb.econ.note }}</div>
+        <div style="overflow-x:auto;margin-bottom:26px">
+        <table class="table">
+          <thead><tr><th>Kit</th><th style="text-align:right">Planned</th><th style="text-align:right">To assemble</th><th style="text-align:right">Selling price</th><th style="text-align:right">Base cost / kit</th><th style="text-align:right">Profit / kit<div style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0">before shipping &amp; tax</div></th><th style="text-align:right">Margin</th><th style="text-align:right">Cost of planned kits</th><th>{{ comb.econ.y1Label }}</th><th>{{ comb.econ.y3Label }}</th></tr></thead>
+          <tbody>
+            <template data-dc-control="for" list="{{ comb.econ.rows }}" as="r" hint-placeholder-count="5">
+              <tr><td><b>{{ r.code }}</b><div style="font-size:10.5px;color:var(--color-neutral-600)">{{ r.name }}</div></td><td style="text-align:right">{{ r.planned }}</td><td style="text-align:right">{{ r.assemble }}</td><td style="{{ r.priceStyle }}"><button class="btn btn-ghost" onClick="{{ r.setPrice }}" style="font-size:inherit;padding:0;color:inherit;font-weight:inherit;text-decoration:inherit">{{ r.price }}</button></td><td style="text-align:right;font-weight:700">{{ r.base }}<div style="{{ r.baseNoteStyle }}">{{ r.baseNote }}</div></td><td style="{{ r.profitStyle }}">{{ r.profit }}</td><td style="text-align:right">{{ r.margin }}</td><td style="text-align:right">{{ r.total }}</td><td style="font-size:11.5px;{{ r.y1Style }}">{{ r.y1 }}</td><td style="font-size:11.5px;{{ r.y3Style }}">{{ r.y3 }}</td></tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+        <div style="{{ comb.econ.emptyStyle }}">No kits are planned for the selected semesters.</div>
+        <h4 style="margin:0 0 8px">3 · Review each component line, then create the order</h4>
         <table class="table">
           <thead><tr><th style="width:34px" title="Checked and reviewed"><span style="position:absolute;left:-9999px">Reviewed</span></th><th>Component / calculation</th><template data-dc-control="for" list="{{ comb.cols }}" as="c" hint-placeholder-count="3"><th style="text-align:right">{{ c }}</th></template><th style="text-align:right">Combined</th><th>Vendor decision</th><th style="text-align:right">Unit alone</th><th style="text-align:right">Unit combined</th><th style="text-align:right">Saved</th></tr></thead>
           <tbody>
@@ -936,7 +951,7 @@
           <div>
             <h4 style="margin:0 0 10px">Trade-offs</h4>
             <div style="border:1px solid var(--color-divider);padding:14px;font-size:13px;color:var(--color-neutral-800);line-height:1.55">{{ comb.tradeoff }}</div>
-            <button class="btn btn-primary btn-block" style="margin-top:12px" onClick="{{ comb.makeOrder }}">Create combined order</button>
+            <button class="btn btn-primary btn-block" style="margin-top:12px" onClick="{{ comb.makeOrder }}">Create order from this plan</button>
           </div>
         </div>
       </sc-if>
@@ -1012,6 +1027,7 @@
       </sc-if>
 
       <sc-if value="{{ vOrders }}" hint-placeholder-val="{{ false }}">
+        <nav aria-label="Ordering" style="display:flex;gap:4px;border-bottom:2px solid var(--color-divider);margin-bottom:20px"><template data-dc-control="for" list="{{ orderingTabs }}" as="t" hint-placeholder-count="2"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button></template></nav>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px">
           <div style="font-size:13px;color:var(--color-neutral-700)">{{ ord.note }}</div>
           <button class="btn btn-primary" onClick="{{ ord.add }}">+ Log purchase &amp; attach receipt</button>
@@ -1079,12 +1095,12 @@
   <!-- picker:start -->
   <sc-if value="{{ picker.open }}" hint-placeholder-val="{{ false }}">
     <div onClick="{{ picker.close }}" style="position:fixed;inset:0;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent);display:grid;place-items:center;padding:24px;z-index:55">
-      <div onClick="{{ picker.stop }}" role="dialog" aria-label="Find or add a component" style="width:min(720px,100%);max-height:90vh;overflow:auto;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:fadeup .15s ease">
+      <div onClick="{{ picker.stop }}" role="dialog" aria-label="Find or add a component" class="labkit-dialog labkit-dialog-lg" style="overflow:auto;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:fadeup .15s ease">
         <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:18px 22px;border-bottom:2px solid var(--color-divider)">
           <div><div style="font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--color-accent-700);font-weight:800">Component list</div><h3 style="margin:5px 0 4px;font-size:22px">{{ picker.title }}</h3><div style="font-size:12px;color:var(--color-neutral-600);max-width:560px">{{ picker.intro }}</div></div>
           <button class="btn btn-secondary btn-icon" aria-label="Close" onClick="{{ picker.close }}">✕</button>
         </div>
-        <div style="padding:18px 22px">
+        <div style="padding:24px 30px">
           <div style="{{ picker.showTabs }}"><button onClick="{{ picker.showFind }}" style="{{ picker.findTabStyle }}">Find in the list</button><button onClick="{{ picker.showCreate }}" style="{{ picker.createTabStyle }}">Create new</button></div>
 
           <sc-if value="{{ picker.finding }}" hint-placeholder-val="{{ true }}">
@@ -1093,7 +1109,7 @@
               <div class="field" style="width:170px"><label>Category</label><select class="input" value="{{ picker.category }}" onChange="{{ picker.onCategory }}"><template data-dc-control="for" list="{{ picker.categories }}" as="c" hint-placeholder-count="8"><option value="{{ c }}">{{ c }}</option></template></select></div>
             </div>
             <div style="font-size:11.5px;color:var(--color-neutral-600);margin:10px 2px 6px">{{ picker.resultsNote }}</div>
-            <div style="max-height:340px;overflow:auto;border:1px solid var(--color-divider)">
+            <div style="max-height:48vh;overflow:auto;border:1px solid var(--color-divider)">
               <template data-dc-control="for" list="{{ picker.results }}" as="r" hint-placeholder-count="6">
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid var(--color-divider);background:var(--color-surface)">
                   <div style="min-width:0"><b style="font-size:13px">{{ r.name }}</b> <span class="tag tag-neutral">{{ r.cat }}</span><div style="font-size:11px;color:var(--color-neutral-600);margin-top:2px">{{ r.detail }}</div><div style="{{ r.metaStyle }}">{{ r.meta }}</div></div>
@@ -1166,7 +1182,7 @@
 
   <sc-if value="{{ semesterForm.open }}" hint-placeholder-val="{{ false }}">
     <div onClick="{{ semesterForm.close }}" style="position:fixed;inset:0;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent);display:grid;place-items:center;padding:24px;z-index:90">
-      <div onClick="{{ semesterForm.stop }}" style="width:min(760px,100%);max-height:90vh;overflow:auto;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:fadeup .15s ease">
+      <div onClick="{{ semesterForm.stop }}" class="labkit-dialog labkit-dialog-md" style="overflow:auto;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:fadeup .15s ease">
         <div style="padding:18px 20px;border-bottom:2px solid var(--color-divider);display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
           <div>
             <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-600)">Planning cycle</div>
@@ -1210,8 +1226,8 @@
 
   <sc-if value="{{ modal.open }}" hint-placeholder-val="{{ false }}">
     <div onClick="{{ modal.close }}" style="position:fixed;inset:0;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent);display:grid;place-items:center;padding:24px;z-index:50">
-      <div onClick="{{ modal.stop }}" style="width:min(900px,100%);max-height:88vh;display:flex;flex-direction:column;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:fadeup .15s ease">
-        <div style="padding:18px 22px;border-bottom:2px solid var(--color-divider);display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+      <div onClick="{{ modal.stop }}" class="labkit-dialog labkit-dialog-xl" style="display:flex;flex-direction:column;background:var(--color-bg);box-shadow:var(--shadow-lg);animation:fadeup .15s ease">
+        <div style="padding:22px 32px;border-bottom:2px solid var(--color-divider);display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
           <div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="tag tag-neutral">{{ modal.cat }}</span><template data-dc-control="for" list="{{ modal.flags }}" as="f" hint-placeholder-count="2"><span class="tag tag-accent">{{ f.label }}</span></template></div>
             <h3 style="margin:8px 0 2px;font-size:25px">{{ modal.name }}</h3>
@@ -1219,10 +1235,10 @@
           </div>
           <button class="btn btn-secondary btn-icon" onClick="{{ modal.close }}">✕</button>
         </div>
-        <nav style="display:flex;padding:0 22px;border-bottom:2px solid var(--color-divider)">
+        <nav style="display:flex;padding:0 32px;border-bottom:2px solid var(--color-divider)">
           <template data-dc-control="for" list="{{ modal.tabs }}" as="t" hint-placeholder-count="5"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button></template>
         </nav>
-        <div style="padding:22px;overflow:auto">
+        <div style="padding:28px 32px;overflow:auto;flex:1">
 
           <sc-if value="{{ modal.isOverview }}" hint-placeholder-val="{{ true }}">
             <div style="display:grid;grid-template-columns:1fr 300px;gap:28px">
@@ -1344,7 +1360,7 @@
 
   <sc-if value="{{ historyPanel.open }}" hint-placeholder-val="{{ false }}">
     <div onClick="{{ historyPanel.close }}" style="position:fixed;inset:0;background:color-mix(in srgb,var(--color-neutral-900) 35%,transparent);z-index:95">
-      <aside onClick="{{ historyPanel.stop }}" style="position:absolute;right:0;top:0;bottom:0;width:min(470px,92vw);background:var(--color-bg);border-left:2px solid var(--color-divider);box-shadow:var(--shadow-lg);display:flex;flex-direction:column">
+      <aside onClick="{{ historyPanel.stop }}" style="position:absolute;right:0;top:0;bottom:0;width:min(760px,94vw);background:var(--color-bg);border-left:2px solid var(--color-divider);box-shadow:var(--shadow-lg);display:flex;flex-direction:column">
         <div style="padding:17px 18px;border-bottom:2px solid var(--color-divider);display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--color-neutral-600)">Saved activity</div><h3 style="margin:3px 0 0">Version history</h3></div><button class="btn btn-secondary btn-icon" onClick="{{ historyPanel.close }}">✕</button></div>
         <div style="padding:14px;overflow:auto;flex:1"><template data-dc-control="for" list="{{ historyPanel.rows }}" as="r" hint-placeholder-count="10"><div style="border-left:3px solid var(--color-divider);padding:8px 10px;margin-bottom:9px;background:var(--color-surface)"><div style="font-size:12.5px;font-weight:600">{{ r.summary }}</div><div style="font-size:10.5px;color:var(--color-neutral-600);margin:3px 0 6px">{{ r.at }} · {{ r.entity }}</div><button class="btn btn-ghost" onClick="{{ r.undo }}" style="{{ r.undoStyle }}">{{ r.undoLabel }}</button></div></template><div style="{{ historyPanel.emptyStyle }}">No edits have been recorded yet.</div></div>
       </aside>
@@ -2913,14 +2929,16 @@ class Component extends DCLogic {
 
     const packedAvailable=this.kits.filter(k=>!k.individual).reduce((total,k)=>total+this.availableInventory('kit',k.id),0),generalAvailable=this.kits.filter(k=>k.individual).reduce((total,k)=>total+this.availableInventory('kit',k.id),0);
     const navMeta={inventory:this.num(packedAvailable+generalAvailable)+' stocked',catalog:this.catalog.length+' parts',orders:this.orders.length+' logged',combine:Object.values(S.combine).filter(Boolean).length+' picked'};
-    const gnav=[['home','Overview'],['inventory','Inventory'],['accuracy','Forecast & trends'],['combine','Combine orders'],['catalog','Component catalog'],['library','Kit library'],['orders','Orders & receipts'],['history','Edit history']].map(([id,label])=>{
-      const on=glob&&(G===id||(id==='library'&&(G==='build'||G==='kit-history')));
-      return {label,meta:navMeta[id]||'',metaStyle:'font-size:10px;color:var(--color-neutral-600)',go:()=>this.setState({scope:'global',gview:id,sidebarOpen:false}),
+    // Sidebar grouped by workflow: plan demand, buy, keep stock and parts, review history. Ordering holds both the purchase planner and the order log.
+    const gnav=[['Plan','home','Overview'],['','accuracy','Forecast & trends'],['Buy','combine','Ordering'],['Stock & parts','inventory','Inventory'],['','catalog','Component catalog'],['','library','Kit library'],['History','history','Edit history']].map(([section,id,label])=>{
+      const on=glob&&(id==='combine'?(G==='combine'||G==='orders'):(G===id||(id==='library'&&(G==='build'||G==='kit-history'))));
+      return {section,sectionStyle:section?'font-size:10px;letter-spacing:0.11em;text-transform:uppercase;color:var(--color-neutral-600);padding:14px 6px 5px':'display:none',label,meta:id==='combine'?this.orders.length+' logged':(navMeta[id]||''),metaStyle:'font-size:10px;color:var(--color-neutral-600)',go:()=>this.setState({scope:'global',gview:id,sidebarOpen:false}),
         style:`width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;border:0;border-left:3px solid ${on?'var(--color-accent)':'transparent'};background:${on?'var(--color-bg)':'transparent'};color:${on?'var(--color-accent-800)':'var(--color-text)'};font-weight:600;font-size:12.5px;padding:7px 9px;margin-bottom:1px;cursor:pointer`};
     });
+    const orderingTabs=[['combine','Plan a purchase'],['orders','Orders & receipts']].map(([id,label])=>{const active=glob&&G===id;return{label,go:()=>this.setState({scope:'global',gview:id}),style:`border:0;border-bottom:3px solid ${active?'var(--color-accent)':'transparent'};background:transparent;color:${active?'var(--color-accent-800)':'var(--color-neutral-700)'};font-weight:700;font-size:13px;padding:9px 16px;cursor:pointer;margin-bottom:-2px`};});
     const workspaceNavTitle=sem.label+' workspace';
     const workspaceNavStyle=glob?'display:none':'display:block';
-    const workspaceNav=[['kits','Kits & demand'],['build','Kit definitions'],['list','Procurement'],['forecast','Forecast']].map(([id,label])=>{const active=effectiveView===id||(id==='kits'&&effectiveView==='kit');return{label,go:()=>{this.setState({sidebarOpen:false});if(id==='build'){const kitId=S.builderKitId||this.kits[0].id;this.builderDraft=null;this.startKitEdit(kitId,sem.id);return;}this.setState({view:id,kitId:id==='kits'?null:S.kitId});},style:`width:100%;text-align:left;border:0;border-left:3px solid ${active?'var(--color-accent)':'transparent'};background:${active?'var(--color-bg)':'transparent'};color:${active?'var(--color-accent-800)':'var(--color-text)'};font-weight:600;font-size:12.5px;padding:7px 9px;margin-bottom:1px;cursor:pointer`};});
+    const workspaceNav=[['kits','Kits & demand'],['forecast','Forecast'],['build','Kit definitions'],['list','Procurement'],['order','Order this semester']].map(([id,label])=>{const active=effectiveView===id||(id==='kits'&&effectiveView==='kit');return{label,go:()=>{this.setState({sidebarOpen:false});if(id==='order'){if(this.status(sem.id)!=='Planning'){this.flash('Only a Planning semester can be ordered for');return;}this.setState({scope:'global',gview:'combine',combine:{[sem.id]:true}});return;}if(id==='build'){const kitId=S.builderKitId||this.kits[0].id;this.builderDraft=null;this.startKitEdit(kitId,sem.id);return;}this.setState({view:id,kitId:id==='kits'?null:S.kitId});},style:`width:100%;text-align:left;border:0;border-left:3px solid ${active?'var(--color-accent)':'transparent'};background:${active?'var(--color-bg)':'transparent'};color:${active?'var(--color-accent-800)':'var(--color-text)'};font-weight:600;font-size:12.5px;padding:7px 9px;margin-bottom:1px;cursor:pointer`};});
 
     const semGroups=[];
     this.semesters.forEach(s=>{
@@ -3063,7 +3081,7 @@ class Component extends DCLogic {
     // Combine semesters
     const planningTerms=this.terms.filter(t=>this.status(t.id)==='Planning');
     const selIds=planningTerms.filter(t=>S.combine[t.id]).map(t=>t.id);
-    const combRows=[]; let sepCost=0,combCost=0;
+    const combRows=[]; let sepCost=0,combCost=0;const unitCost={},baseTotals={base:0,ship:0};
     this.catalog.filter(p=>!p.alternativeFor).forEach(p=>{
       const per=selIds.map(id=>this.termNeed(p.id,[id]));
       const separateTotal=per.reduce((a,b)=>a+b,0),tot=this.termNeed(p.id,selIds); if(!tot&&!separateTotal) return;
@@ -3072,6 +3090,8 @@ class Component extends DCLogic {
       const sep=selIds.reduce((t,id,i)=>{if(!per[i])return t;const source=this.purchaseComponent(id+':'+p.id,p.id);if(p.lifecycleStatus==='discontinued'&&source.id===p.id)return t;const sourcePlan=this.vendorPlan(source.id,per[i],this.vendorChoice(id,p.id,source.id).vendor);return t+(sourcePlan.total||0);},0),blocked=p.lifecycleStatus==='discontinued'&&!selectedAlt;
       const plan=blocked?{allocations:[],selected:null,total:null,decision:'Blocked: choose an approved replacement before ordering.'}:this.vendorPlan(buyPart.id,Math.max(1,tot),combinedPin),combinedBest=plan.selected||(blocked?{vendor:'Replacement required',productUrl:'',meetsRequirements:false}:this.best(buyPart.id,Math.max(1,tot))),cmb=tot&&plan.total!=null?plan.total:0,wire=this.wireCalculation(p.id,this.termRawNeed(p.id,selIds));
       sepCost+=sep; combCost+=cmb;
+      // Base price excludes shipping and tax: the tier unit price this order reaches, weighted across split vendors.
+      if(!blocked&&plan.allocations.length){const qtySum=Math.max(1,plan.allocations.reduce((t,a)=>t+a.qty,0));unitCost[p.id]={unit:plan.allocations.reduce((t,a)=>t+a.qty*a.unit,0)/qtySum,estimate:false};baseTotals.base+=plan.allocations.reduce((t,a)=>t+a.cost-a.shipping,0);baseTotals.ship+=plan.allocations.reduce((t,a)=>t+a.shipping,0);}
       const tierLines=blocked?[]:plan.allocations.map(a=>{const raw=(this.supplierQuotes[buyPart.id]||[]).find(q=>q.id===a.quoteId);return raw?this.tierInfo(raw,a.qty,a.vendor):'';}).filter(Boolean),saving=blocked?0:sep-cmb;
       let win=null;
       if(!blocked&&plan.allocations.length===1&&per.filter(q=>q>0).length>1&&saving>1){
@@ -3084,12 +3104,50 @@ class Component extends DCLogic {
       const choices=blocked?[]:this.vendors(buyPart.id,Math.max(1,tot)).filter(v=>v.manual&&!v.referenceOnly&&Number.isFinite(v.unit)&&v.meetsRequirements!==false),approved=this.approvedAlternatives(p.id);
       combRows.push({id:p.id,name:p.name,cat:p.cat,kitIds:usedKitIds,cells:per.map((v,i)=>wire?(this.num(perRaw[i])+' cuts ('+this.num(v)+' spool'+(v===1?'':'s')+')'):this.num(v)),total:wire?(this.num(rawTotal)+' cuts ('+this.num(tot)+' spool'+(tot===1?'':'s')+')'):this.num(tot),basis:wire?wire.label:'',sourceSel:selectedAlt?buyPart.id:'original',sourceOpts:[{id:'original',label:(blocked?'Discontinued original · ':'Original · ')+p.name},...approved.map(a=>({id:a.componentId,label:'Approved replacement · '+a.part.name}))],sourceStyle:`border:1px solid ${selectedAlt?'var(--color-accent)':blocked?'var(--color-danger)':'var(--color-divider)'};background:${selectedAlt?'var(--color-accent-100)':'var(--color-surface)'};font-size:10.5px;padding:4px 6px;max-width:300px;width:100%`,sourceNote:selectedAlt?'Combined order will buy '+buyPart.name+' as the approved replacement for '+p.name:blocked?'Original is discontinued · select an approved replacement':(approved.length?'Original selected · approved replacements available':'Original part'),sourceColor:selectedAlt?'var(--color-accent-700)':blocked?'var(--color-danger)':'var(--color-neutral-600)',onSource:e=>{e.stopPropagation();this.setSubstituteChoice(combinedKey,p.id,e.target.value,(e.target.value==='original'?'Restored original ':'Selected '+(this.map[e.target.value]||{}).name+' instead of ')+p.name+' for combined purchasing');},vendor:combinedBest.vendor,vendorSel:S.lineVendor[combinedKey]||'auto',vendorOpts:[{id:'auto',label:blocked?'Select replacement first':uniquePins.length===1?'Use '+uniquePins[0]:'Recommended'},...choices.map(v=>({id:v.vendor,label:v.vendor+' · '+(v.landedKnown?this.m(v.landed)+' landed':this.m(v.ext)+' + shipping')+' · '+(v.stock==null?'stock ?':this.num(v.stock)+' left')+' · '+v.leadLabel}))],vendorStyle:`border:1px solid ${S.lineVendor[combinedKey]?'var(--color-accent)':'var(--color-divider)'};background:${S.lineVendor[combinedKey]?'var(--color-accent-100)':'var(--color-surface)'};font-size:11.5px;padding:4px 6px;max-width:240px`,decision:conflicts+plan.decision,url:combinedBest.productUrl||'#',linkStyle:combinedBest.productUrl?'font-size:10px;color:var(--color-accent-700);font-weight:700':'display:none',reviewed:reviewKeys.length>0&&reviewKeys.every(key=>this.isLineReviewed(key)),onReview:e=>{e.stopPropagation();this.toggleLinesReviewed(reviewKeys,p.name,selIds.length===1?this.termMap[selIds[0]].label:selIds.length+' semesters');},...(()=>{const ids=blocked?[]:plan.allocations.filter(a=>this.vendorKeyFor(a.vendor)).map(a=>a.quoteId),checks=ids.map(id=>[id,(S.priceChecks||{})[id]||{}]),busy=checks.some(([,c])=>c.status==='checking'),differs=checks.filter(([,c])=>c.status==='differs').map(([id])=>id),lines=checks.filter(([,c])=>c.message).map(([id,c])=>{const raw=(this.supplierQuotes[buyPart.id]||[]).find(q=>q.id===id)||{};return (raw.vendor||'Vendor')+': '+c.message;});return{checkStyle:ids.length?'font-size:10.5px;padding:2px 6px;margin-top:6px':'display:none',checkLabel:busy?'Checking…':'Check prices',checkPrices:e=>{e.stopPropagation();this.checkListingPricings(buyPart.id,ids);},checkText:lines.join('\n'),checkTextStyle:lines.length?'font-size:10px;color:var(--color-neutral-700);margin-top:4px;white-space:pre-line;max-width:270px':'display:none',applyStyle:differs.length?'font-size:10.5px;padding:2px 6px;margin-top:4px':'display:none',applyLabel:'Use vendor prices',applyChecked:e=>{e.stopPropagation();differs.forEach(id=>this.applyCheckedPrices(buyPart.id,id));}};})(),tierText:tierLines.join('\n'),tierStyle:tierLines.length?'font-size:10px;color:var(--color-neutral-600);font-weight:400;margin-top:4px;white-space:pre-line;max-width:260px;margin-left:auto':'display:none',_win:win,multi:multiVendor,multiText:multiText,multiStyle:multiVendor?'display:inline-block;margin-top:5px;padding:3px 7px;background:var(--color-accent-100);border-left:3px solid var(--color-accent);font-size:10.5px;font-weight:700;color:var(--color-accent-900);max-width:300px':'display:none',note:(S.combineNotes||{})[p.id]||'',onNote:e=>this.setState({combineNotes:{...(S.combineNotes||{}),[p.id]:e.target.value}}),unitAlone:separateTotal&&sep?this.mu(sep/separateTotal):'—',unitComb:tot&&cmb?this.mu(cmb/tot):'—',saved:blocked?'—':this.m(sep-cmb),_s:blocked?0:sep-cmb,stop:e=>e.stopPropagation(),onVendor:e=>{e.stopPropagation();if(blocked)return;this.setVendorChoice(combinedKey,e.target.value,(e.target.value==='auto'?'Cleared combined vendor choice for ':'Selected '+e.target.value+' for ')+buyPart.name);},open:()=>this.openPart(p.id)});
     });
-    combRows.sort((a,b)=>b._s-a._s);const combineCategories=['All',...new Set(combRows.map(r=>r.cat))],combineKits=this.kits.filter(k=>combRows.some(r=>r.kitIds.includes(k.id))),visibleCombRows=combRows.filter(r=>(S.combineCategory==='All'||r.cat===S.combineCategory)&&(S.combineKit==='All'||r.kitIds.includes(S.combineKit)));
+    combRows.sort((a,b)=>b._s-a._s);
+    // Kit economics for the purchase: cost, selling price and profit per kit at the latest selected semester, and how component prices moved.
+    const ecoRefId=selIds.slice().sort((a,b)=>this.termSortValue(this.termMap[a])-this.termSortValue(this.termMap[b])).pop(),ecoTerm=ecoRefId?this.termMap[ecoRefId]:null,pieceCache={};
+    const piecePrice=part=>{ // per piece (per cut for wire) at the reference semester; null when nothing is priced
+      if(pieceCache[part.id]!==undefined)return pieceCache[part.id];
+      const buy=this.purchaseComponent(ecoRefId+':'+part.id,part.id)||part,known=unitCost[part.id],wireCalc=this.wireCalculation(part.id,1);
+      let unit=known?known.unit:null,estimate=false;
+      if(unit==null&&this.map[buy.id]){const rawNeed=Math.max(1,this.termRawNeed(part.id,selIds)),b=this.best(buy.id,Math.max(1,this.componentPurchaseQuantity(part.id,rawNeed)));unit=b&&Number.isFinite(b.unit)?b.unit:null;estimate=!b||b.estimate===true;}
+      return pieceCache[part.id]=unit==null?null:{piece:wireCalc?unit/wireCalc.conservative:unit,estimate};
+    };
+    const trendFor=(items,back)=>{
+      const past=this.terms.find(x=>x.season===ecoTerm.season&&x.year===ecoTerm.year-back);
+      if(!past)return{text:'No '+ecoTerm.season+' '+(ecoTerm.year-back)+' semester',style:'color:var(--color-neutral-600)'};
+      let now=0,before=0,covered=0;
+      items.forEach(it=>{const part=this.map[it.p],cost=part&&piecePrice(part),paid=this.paid(it.p,past.id);if(!cost||!paid)return;const wireCalc=this.wireCalculation(it.p,1);now+=it.q*cost.piece;before+=it.q*(wireCalc?paid.unit/wireCalc.conservative:paid.unit);covered+=1;});
+      if(!covered)return{text:'No recorded prices for '+past.label,style:'color:var(--color-neutral-600)'};
+      if(covered/Math.max(1,items.length)<0.5||before<=0)return{text:'Only '+covered+' of '+items.length+' parts have recorded prices for '+past.label,style:'color:var(--color-neutral-600)'};
+      const pct=(now-before)/before*100,dir=pct>=0.05?'▲ +':pct<=-0.05?'▼ −':'● ';
+      return{text:dir+Math.abs(pct).toFixed(1)+'% · '+covered+' of '+items.length+' parts · vs '+past.label,style:'font-weight:700;color:'+(pct>=0.05?'var(--color-danger)':pct<=-0.05?'var(--color-accent-2-700)':'var(--color-neutral-700)')};
+    };
+    const ecoRows=ecoTerm?this.kits.filter(k=>k.active!==false).map(k=>{
+      const planned=selIds.reduce((t,id)=>t+(this.sales(k,id).sold||0),0),assemble=selIds.reduce((t,id)=>t+(this.sales(k,id).purchase||0),0);if(planned<=0&&assemble<=0)return null;
+      const items=this.kitItemsForTerm(k,ecoRefId);let base=0,missing=0,estimated=0;
+      items.forEach(it=>{const part=this.map[it.p],cost=part&&piecePrice(part);if(!cost){missing+=1;return;}base+=it.q*cost.piece;if(cost.estimate)estimated+=1;});
+      // One packaging bag per class kit; individual items need none.
+      const bag=k.individual?null:this.bagMap[(this.versionFor(k.id,ecoRefId)||{}).bagTypeId],bagUnit=bag&&bag.packPrice!=null?Math.max(0,Number(bag.packPrice)||0)/Math.max(1,Number(bag.packQuantity)||1):null;
+      if(bagUnit!=null)base+=bagUnit;
+      const price=this.kitSalePrice(k,ecoRefId),profit=price==null?null:price-base,y1=trendFor(items,1),y3=trendFor(items,3);
+      const flag=[missing?missing+' part'+(missing===1?'':'s')+' unpriced':estimated?estimated+' estimated':'',bagUnit!=null?'incl. '+this.mu(bagUnit)+' bag':(k.individual?'':'bag price not entered')].filter(Boolean).join(' · ');
+      return{code:k.individual?'GENERAL ITEM':k.code,name:k.name,planned:this.num(planned),assemble:this.num(assemble),price:price==null?'Set a selling price':this.m(price),priceStyle:price==null?'text-align:right;font-size:11px;color:var(--color-accent-700);font-weight:700':'text-align:right',setPrice:e=>{e.stopPropagation();this.startKitEdit(k.id,ecoRefId);},
+        base:this.m(base),baseNote:flag,baseNoteStyle:flag?'font-size:10px;color:var(--color-accent-700);margin-top:2px':'display:none',total:this.m(base*planned),
+        profit:profit==null?'—':this.m(profit),profitStyle:'text-align:right;font-weight:800;color:'+(profit==null?'var(--color-neutral-600)':profit<0?'var(--color-danger)':'var(--color-accent-2-700)'),margin:profit==null||!price?'—':(profit/price*100).toFixed(0)+'%',
+        y1:y1.text,y1Style:y1.style,y3:y3.text,y3Style:y3.style};
+    }).filter(Boolean):[];
+    const econ={rows:ecoRows,
+      note:ecoTerm?'Pricing, selling price and profit use '+ecoTerm.label+(selIds.length>1?' (the latest of the '+selIds.length+' semesters)':'')+'. Base cost = each component at the price tier this order reaches plus one packaging bag per class kit when its price is entered; it excludes shipping and tax, so profit is before shipping and tax, and wire is priced per cut. Price change compares today’s planned component prices with what was paid for the same components in the same season one and three years earlier, from recorded orders only, and shows how many parts had a recorded price. It is the cost change, not the selling-price change.':'Pick at least one planning semester.',
+      emptyStyle:ecoRows.length?'display:none':'padding:14px;border:1px dashed var(--color-divider);font-size:12.5px;color:var(--color-neutral-700)',
+      y1Label:ecoTerm?'vs '+ecoTerm.season+' '+(ecoTerm.year-1):'vs last year',y3Label:ecoTerm?'vs '+ecoTerm.season+' '+(ecoTerm.year-3):'vs 3 years ago'};
+    const combineCategories=['All',...new Set(combRows.map(r=>r.cat))],combineKits=this.kits.filter(k=>combRows.some(r=>r.kitIds.includes(k.id))),visibleCombRows=combRows.filter(r=>(S.combineCategory==='All'||r.cat===S.combineCategory)&&(S.combineKit==='All'||r.kitIds.includes(S.combineKit)));
     const combBags=this.bagTypes.map(b=>{const need=this.bagNeed(b.id,selIds),used=this.kits.filter(k=>selIds.some(id=>{const v=this.versionFor(k.id,id);return v&&v.bagTypeId===b.id&&this.sales(k,id).purchase>0;})).map(k=>k.code);return{name:b.name,size:b.size||'Size not entered',usedBy:used.length?used.join(', '):'—',gross:this.num(need.gross),available:this.num(need.available),needed:this.num(need.needed),packs:this.num(need.packs),vendor:b.preferredVendor||'Supplier not selected',url:b.productUrl||'#',linkStyle:b.productUrl?'display:block;font-size:10px;color:var(--color-accent-700);font-weight:700;margin-top:2px':'display:none',cost:need.cost==null?'—':this.m(need.cost),color:need.needed?'var(--color-accent-700)':'var(--color-text)'};}).filter(b=>b.usedBy!=='—'||Number(String(b.needed).replace(/,/g,''))>0);
     const wins=combRows.filter(r=>r._win).map(r=>r._win).sort((a,b)=>b._s-a._s);
     const comb={terms:planningTerms.map(t=>({label:t.label,go:()=>this.setState({combine:{...S.combine,[t.id]:!S.combine[t.id]}}),style:`border:1px solid ${S.combine[t.id]?'var(--color-accent)':'var(--color-divider)'};background:${S.combine[t.id]?'var(--color-accent)':'var(--color-surface)'};color:${S.combine[t.id]?'var(--color-bg)':'var(--color-text)'};font-size:12px;font-weight:600;padding:6px 11px;cursor:pointer`})),category:S.combineCategory,kit:S.combineKit,categories:combineCategories.map(id=>({id,label:id==='All'?'All component types':id})),kits:[{id:'All',label:'All kits / items'},...combineKits.map(k=>({id:k.id,label:k.code+' · '+k.name}))],onCategory:e=>this.setState({combineCategory:e.target.value}),onKit:e=>this.setState({combineKit:e.target.value}),
       cols:selIds.map(id=>this.termMap[id].label),footSpan:selIds.length+3,footLabel:visibleCombRows.length+' shown of '+combRows.length+' component lines across '+selIds.length+' semesters',footTotal:'Component savings '+this.m(sepCost-combCost),
-      summary:[{val:this.num(selIds.length),label:'Semesters',color:'var(--color-text)'},{val:this.num(combRows.length+combBags.filter(b=>Number(String(b.packs).replace(/,/g,''))>0).length),label:'Order lines',color:'var(--color-text)'},{val:this.m(sepCost).replace('.00',''),label:'Components separately',color:'var(--color-text)'},{val:this.m(combCost).replace('.00',''),label:'Components combined',color:'var(--color-text)'},{val:this.m(sepCost-combCost).replace('.00',''),label:'Component savings',color:'var(--color-accent-700)'}],
+      summary:[{val:this.num(selIds.length),label:'Semesters',color:'var(--color-text)'},{val:this.num(combRows.length+combBags.filter(b=>Number(String(b.packs).replace(/,/g,''))>0).length),label:'Order lines',color:'var(--color-text)'},{val:this.m(sepCost).replace('.00',''),label:'Components separately',color:'var(--color-text)'},{val:this.m(combCost).replace('.00',''),label:'Components combined',color:'var(--color-text)'},{val:this.m(sepCost-combCost).replace('.00',''),label:'Component savings',color:'var(--color-accent-700)'},{val:this.m(combCost+this.bagTypes.reduce((t,b)=>{const need=this.bagNeed(b.id,selIds);return t+(need.packs>0&&need.cost!=null?need.cost:0);},0)).replace('.00',''),label:'Order total · landed + bags',color:'var(--color-accent-700)'},{val:this.m(baseTotals.base).replace('.00',''),label:'Base cost · no shipping',color:'var(--color-text)'},{val:this.m(baseTotals.ship).replace('.00',''),label:'Shipping',color:'var(--color-text)'}],econ,
       rows:visibleCombRows,bags:combBags,wins:wins.slice(0,6),winsEmptyStyle:wins.length?'display:none':'font-size:12px;color:var(--color-neutral-600);padding:11px 13px;border:1px dashed var(--color-divider)',
       tradeoff:`Combining ${selIds.length} semesters ties up ${this.m(combCost).replace('.00','')} of budget up front and needs storage for a full extra term of parts. Passives and ICs keep indefinitely, so they are safe to bulk; electrolytic capacitors and anything with a shelf life are better bought per term. Lead times also stack — the overseas lines in this cart run 12–34 days.`,
       makeOrder:()=>this.createCombinedOrder(selIds)};
@@ -3193,8 +3251,8 @@ class Component extends DCLogic {
         return {id:o.id,meta:o.vendor+' · '+o.date+' · '+(o.status||'ordered')+' · covers '+o.terms.map(t=>(this.termMap[t]||{}).label).join(' + ')+' · '+(o.trackingNumber?('tracking '+o.trackingNumber):'tracking missing')+' · '+(o.receiptUrl||o.receipt?'receipt on file':'receipt missing')+(o.notes?' · '+o.notes:''),
           lines:o.lines.map(l=>({name:this.orderItemName(l[0]),requirement:this.orderLineRequirement(l),vendor:l[3]||o.vendor||'—',qty:this.num(l[1]),unit:this.mu(l[2]),ext:this.m(l[1]*l[2]),url:l[5]||'#',linkStyle:l[5]?'font-size:10px;font-weight:700;color:var(--color-accent-700)':'display:none',stop:e=>e.stopPropagation(),open:()=>{if(this.map[l[0]])this.openPart(l[0]);}}))}; })()};
 
-    const ghdrSub={home:'Everything across all 36 recorded semesters',inventory:'Current general items, packed kits, bags, and loose components',accuracy:'Predictions, demand trends, evidence, and data entry in one workspace',combine:'Compare and resolve vendor choices across planning semesters',catalog:'Search components and maintain their vendor links, bulk pricing, stock, shipping, and lead time',library:'Reusable versioned kit definitions and sales history',build:'Create or update a reusable kit definition','kit-history':'Version assignments, selling prices, and sales history',orders:'Purchase orders, tracking, receipts, and paid prices',history:'Auditable changes with undo'};
-    const ghdrTitle={home:'All semesters',inventory:'Current inventory',accuracy:'Forecast & trends',combine:'Combined purchasing',catalog:'Component catalog',library:'Kit library',build:'Kit builder','kit-history':'Kit history',orders:'Orders & receipts',history:'Edit history'};
+    const ghdrSub={home:'Everything across all 36 recorded semesters',inventory:'Current general items, packed kits, bags, and loose components',accuracy:'Predictions, demand trends, evidence, and data entry in one workspace',combine:'Plan a purchase across one or more semesters: cost, base price per kit, profit, and price trends',catalog:'Search components and maintain their vendor links, bulk pricing, stock, shipping, and lead time',library:'Reusable versioned kit definitions and sales history',build:'Create or update a reusable kit definition','kit-history':'Version assignments, selling prices, and sales history',orders:'Plan a purchase, then log orders, tracking, receipts, and paid prices',history:'Auditable changes with undo'};
+    const ghdrTitle={home:'All semesters',inventory:'Current inventory',accuracy:'Forecast & trends',combine:'Ordering',catalog:'Component catalog',library:'Kit library',build:'Kit builder','kit-history':'Kit history',orders:'Ordering',history:'Edit history'};
     const ghdr={title:ghdrTitle[G]||'LabKit',sub:ghdrSub[G]||'',stats:[
       {val:this.num(lifetime),label:'Units, 12 years',color:'var(--color-text)'},
       {val:mapeLabel,label:'Forecast error',color:'var(--color-text)'},
@@ -3203,7 +3261,7 @@ class Component extends DCLogic {
     const gtabs=[];
 
     return {
-      semesters,favorites,catalogCount:this.catalog.length,gnav,semGroups,workspaceNav,workspaceNavTitle,workspaceNavStyle,
+      semesters,favorites,catalogCount:this.catalog.length,gnav,orderingTabs,semGroups,workspaceNav,workspaceNavTitle,workspaceNavStyle,
       shellClass:S.sidebarOpen?'nav-open':'',
       sidebarExpanded:S.sidebarOpen?'true':'false',
       toggleSidebar:()=>this.setState({sidebarOpen:!S.sidebarOpen}),

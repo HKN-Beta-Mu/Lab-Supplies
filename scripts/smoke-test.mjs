@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.06\.23"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.06\.25"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -30,7 +30,8 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /General-item demand drivers/);
   assert.match(html, /Wire spool yield/);
   assert.match(html, /saved product link without pricing remains a manual reference/);
-  assert.match(html, /Combined purchasing/);
+  assert.match(html, /Plan a purchase/);
+  assert.match(html, /aria-label="Ordering"/);
   assert.doesNotMatch(html, /Refresh APIs \+ AI review/);
   assert.doesNotMatch(html, /<sc-for\b/);
   assert.match(html, /<template data-dc-control="for"/);
@@ -959,6 +960,90 @@ test("the data model initializes and can create a persisted semester", async () 
     delete priceSource.capabilities;
     app.supplierQuotes[bulkPart.id] = [vendorListing("jam", "Jameco Test", 0.05), vendorListing("mou", "Mouser Test", 0.1)];
 
+    // Kit economics on the Ordering page: base cost per kit (no shipping or tax), profit, and price change from recorded orders.
+    const econQuotes = {};
+    const priceKitParts = (kit, unit) => app.kitItemsForTerm(kit, "sp27").forEach((item) => {
+      const bought = app.purchaseComponent("sp27:" + item.p, item.p).id;
+      [item.p, bought].forEach((id) => {
+        if (!(id in econQuotes)) econQuotes[id] = app.supplierQuotes[id];
+        app.supplierQuotes[id] = [vendorListing("eco-" + id, "Eco Co", unit, { shippingCost: 25 })];
+      });
+    });
+    const savedOrders = app.orders;
+    app.orders = [];
+    const payFor = (termId, items, unit) => app.orders.push({ id: "ECO-" + termId, date: "2025-01-01", vendor: "Eco Co", status: "received", terms: [termId], lines: items.map((item) => [item.p, 10, unit, "Eco Co"]) });
+    const econRow = (code) => app.renderVals().comb.econ.rows.find((row) => row.code === code);
+    const ece2031 = app.kitMap.ece2031;
+    const ece2031Items = app.kitItemsForTerm(ece2031, "sp27");
+    const perPiece = (id, unit) => { const wire = app.wireCalculation(id, 1); return wire ? unit / wire.conservative : unit; };
+    const ece2031Base = ece2031Items.reduce((total, item) => total + item.q * perPiece(item.p, 0.1), 0);
+    assert.ok(ece2031Items.some((item) => app.wireCalculation(item.p, 1)), "ECE 2031 includes wire, so the fixture exercises per-cut pricing");
+    priceKitParts(ece2031, 0.1);
+    payFor("sp26", ece2031Items, 0.08);
+    payFor("sp24", ece2031Items, 0.2);
+    app.setState({ scope: "global", gview: "combine", combine: { sp27: true } });
+    let economics = app.renderVals().comb;
+    assert.match(economics.econ.y1Label, /^vs Spring 2026$/);
+    assert.match(economics.econ.y3Label, /^vs Spring 2024$/);
+    let ece2031Row = econRow("ECE 2031");
+    assert.equal(ece2031Row.base, app.m(ece2031Base), "base cost per kit excludes the $25 shipping on every listing");
+    assert.equal(ece2031Row.priceStyle.includes("font-size:11px"), true, "no selling price yet is flagged, not shown as zero profit");
+    assert.equal(ece2031Row.price, "Set a selling price");
+    assert.equal(ece2031Row.profit, "—");
+    assert.equal(ece2031Row.y1, "▲ +25.0% · " + ece2031Items.length + " of " + ece2031Items.length + " parts · vs Spring 2026");
+    assert.equal(ece2031Row.y3, "▼ −50.0% · " + ece2031Items.length + " of " + ece2031Items.length + " parts · vs Spring 2024");
+    assert.match(ece2031Row.y1Style, /var\(--color-danger\)/);
+    assert.ok(Number(economics.summary.find((tile) => tile.label === "Shipping").val.replace(/[$,]/g, "")) >= 25, "shipping is reported separately from base cost");
+    app.versionFor("ece2031", "sp27").salePrice = ece2031Base + 10;
+    ece2031Row = econRow("ECE 2031");
+    assert.equal(ece2031Row.profit, app.m(10));
+    assert.equal(ece2031Row.margin, Math.round(10 / (ece2031Base + 10) * 100) + "%");
+    // Too few recorded prices: no percentage is shown, and the coverage is stated. No orders at all reads as "no recorded prices".
+    app.orders = [];
+    payFor("sp26", ece2031Items.slice(0, 2), 0.08);
+    ece2031Row = econRow("ECE 2031");
+    assert.equal(ece2031Row.y1, "Only 2 of " + ece2031Items.length + " parts have recorded prices for Spring 2026");
+    assert.equal(ece2031Row.y3, "No recorded prices for Spring 2024");
+    // A packaging bag adds its per-bag price to a class kit; an unpriced bag is called out instead of silently ignored.
+    assert.match(econRow("ECE 2031").baseNote, /bag price not entered/);
+    app.bagMap["bag-ece2031"].packPrice = 10;
+    app.bagMap["bag-ece2031"].packQuantity = 100;
+    assert.equal(econRow("ECE 2031").base, app.m(ece2031Base + 0.1));
+    assert.match(econRow("ECE 2031").baseNote, /incl\. \$0\.100 bag/);
+    app.bagMap["bag-ece2031"].packPrice = null;
+    assert.ok(economics.summary.some((tile) => tile.label === "Order total · landed + bags"));
+    // A wire kit is priced per cut: a $10 spool is spread over the cuts it yields.
+    app.updateTermKitUnits("sp27", "wirekit", 30);
+    const stockedRow = app.renderVals().comb.econ.rows.find((row) => row.name === app.kitMap.wirekit.name);
+    assert.ok(stockedRow, "a kit whose demand is met from stock still appears");
+    assert.equal(stockedRow.planned, "30");
+    assert.equal(stockedRow.assemble, "0");
+    app.updateTermKitUnits("sp27", "wirekit", 300);
+    const wireKit = app.kitMap.wirekit;
+    priceKitParts(wireKit, 10);
+    const wireBase = app.kitItemsForTerm(wireKit, "sp27").reduce((total, item) => {
+      const wire = app.wireCalculation(item.p, 1);
+      return total + item.q * (wire ? 10 / wire.conservative : 10);
+    }, 0);
+    const wireRow = app.renderVals().comb.econ.rows.find((row) => row.name === wireKit.name);
+    assert.equal(wireRow.base, app.m(wireBase));
+    assert.ok(wireBase < 10 * app.kitItemsForTerm(wireKit, "sp27").reduce((total, item) => total + item.q, 0), "cuts are not charged at the spool price");
+    // A kit that buys an approved replacement is priced with the replacement, not the original.
+    const hctKit = app.kits.find((kit) => !kit.individual && app.kitItemsForTerm(kit, "sp27").some((item) => item.p === "hct20"));
+    if (hctKit) {
+      app.updateTermKitUnits("sp27", hctKit.id, 30);
+      app.setSubstituteChoice("sp27:hct20", "hct20", approvedAlternative.id);
+      priceKitParts(hctKit, 0.1);
+      app.supplierQuotes[approvedAlternative.id] = [vendorListing("eco-alt", "Alt Co", 0.5)];
+      const hctBase = app.kitItemsForTerm(hctKit, "sp27").reduce((total, item) => total + item.q * perPiece(item.p, item.p === "hct20" ? 0.5 : 0.1), 0);
+      assert.equal(app.renderVals().comb.econ.rows.find((row) => row.name === hctKit.name).base, app.m(hctBase));
+    }
+    // Restore everything the economics fixtures touched.
+    app.orders = savedOrders;
+    delete app.versionFor("ece2031", "sp27").salePrice;
+    Object.entries(econQuotes).forEach(([id, quotes]) => { app.supplierQuotes[id] = quotes; });
+    app.setState({ scope: "semester", semesterId: "sp27", view: "kits", gview: "home", combine: { fa26: true } });
+
     // Every row key the new checkbox / vendor / note markup reads exists on the row view models.
     const templateBody = (source, listName) => {
       const start = source.indexOf('list="{{ ' + listName + ' }}"');
@@ -984,6 +1069,29 @@ test("the data model initializes and can create a persisted semester", async () 
     app.setState({ modalTab: "vendors" });
     const vendorSample = app.renderVals().modal.vendors[0];
     app.setState({ partId: null, scope: "global", gview: "combine", combine: { sp27: true } });
+    app.setState({ scope: "semester", semesterId: "sp27", view: "list" });
+    const navView = app.renderVals();
+    assert.deepEqual(navView.gnav.map((item) => item.label), ["Overview", "Forecast & trends", "Ordering", "Inventory", "Component catalog", "Kit library", "Edit history"]);
+    assert.deepEqual(navView.gnav.filter((item) => item.section).map((item) => item.section), ["Plan", "Buy", "Stock & parts", "History"]);
+    assert.deepEqual(navView.workspaceNav.map((item) => item.label), ["Kits & demand", "Forecast", "Kit definitions", "Procurement", "Order this semester"]);
+    navView.workspaceNav.at(-1).go();
+    assert.equal(app.state.gview, "combine");
+    assert.deepEqual(Object.keys(app.state.combine).filter((id) => app.state.combine[id]), ["sp27"], "Order this semester opens the planner with just that semester");
+    assert.equal(app.renderVals().gnav.find((item) => item.label === "Ordering").style.includes("var(--color-accent)"), true);
+    app.setState({ gview: "orders" });
+    assert.equal(app.renderVals().gnav.find((item) => item.label === "Ordering").style.includes("border-left:3px solid var(--color-accent)"), true, "Ordering stays highlighted on the Orders & receipts tab");
+    assert.deepEqual(app.renderVals().orderingTabs.map((tab) => tab.label), ["Plan a purchase", "Orders & receipts"]);
+    app.setState({ gview: "combine", combine: { sp27: true } });
+    const econSample = app.renderVals().comb.econ.rows[0];
+    const tabSample = app.renderVals().orderingTabs[0];
+    const navSample = app.renderVals().gnav[0];
+    for (const [listName, sample, alias] of [["orderingTabs", tabSample, "t"], ["gnav", navSample, "g"], ["comb.econ.rows", econSample, "r"]]) {
+      const body = templateBody(html, listName);
+      assert.ok(body.length > 40, listName + " template found");
+      for (const [, key] of body.matchAll(new RegExp("\\{\\{\\s*" + alias + "\\.(\\w+)\\s*\\}\\}", "g"))) assert.ok(key in sample, listName + " is missing " + key);
+    }
+    for (const [, key] of html.matchAll(/\{\{\s*comb\.econ\.(\w+)\s*\}\}/g)) assert.ok(key in app.renderVals().comb.econ, "comb.econ." + key + " is missing");
+    app.setState({ scope: "global", gview: "combine", combine: { sp27: true } });
     for (const [listName, sample] of [["modal.vendors", vendorSample], ["list.rows", listSample], ["kit.rows", kitSample], ["comb.rows", combSample]]) {
       const body = templateBody(html, listName);
       assert.ok(body.length > 200, listName + " template found");

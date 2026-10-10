@@ -225,9 +225,9 @@ button:not(:disabled) {
     overflow-x: auto;
   }
 
-  .dialog,
-  [style*="width:min(900px,100%)"] {
-    max-height: 94vh !important;
+  .labkit-dialog {
+    max-height: 96vh !important;
+    height: auto !important;
   }
 }
 
@@ -246,4 +246,23 @@ button:not(:disabled) {
   .app-content [style*="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))"] {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* Floating windows: wide enough that tables and forms are never squeezed. */
+.labkit-dialog {
+  width: min(1280px, 100%);
+  max-height: 94vh;
+}
+
+.labkit-dialog-xl {
+  width: min(1360px, 100%);
+  height: min(920px, 94vh);
+}
+
+.labkit-dialog-lg {
+  width: min(1120px, 100%);
+}
+
+.labkit-dialog-md {
+  width: min(1040px, 100%);
 }

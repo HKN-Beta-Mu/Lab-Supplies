@@ -21,6 +21,16 @@ and extended with responsive behavior and persistent shared data. The semester
 history now uses the supplied Spring 2015–Fall 2026 records rather than generated
 demo figures. No build-time dependencies are required.
 
+## Ordering
+
+The sidebar is grouped by workflow (Plan, Buy, Stock & parts, History). **Ordering**
+holds two tabs: **Plan a purchase** (pick one or several planning semesters, see
+each kit's base cost without shipping or tax, selling price, profit and how component
+prices moved against the same season one and three years earlier, review every line,
+then create the order) and **Orders & receipts**. A semester's workspace ends with
+**Order this semester**. Price change compares today's planned prices with recorded
+order prices for the same components, and shows how many parts had a recorded price.
+
 ## Run locally
 
 ```sh
