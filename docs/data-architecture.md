@@ -107,6 +107,8 @@ POST { action: "suggestSemester", payload: { season, year, notes } }
 POST { action: "refreshSupplierQuotes", payload: { componentId, quantity } }
 POST { action: "lookupVendorComponent", payload: { vendor, query, url, categories } }
 POST { action: "parseNewComponentText", payload: { text, vendor, categories } }
+POST { action: "checkVendorPricing", payload: { vendor, sku } }
+POST { action: "scrapeListingPage", payload: { url, snapshotId, categories } }
 ```
 
 `suggestSemester` always starts with a deterministic same-season historical
@@ -142,6 +144,20 @@ returned as drafts, saved with `priceSource: "gemini-web"`, and called out in
 every purchase plan that allocates to them until the officer ticks that the prices
 were checked on the product page. `refreshSupplierQuotes` is separate and still
 uses the supplier APIs for verified quotes.
+
+`checkVendorPricing` returns a Mouser or DigiKey SKU's complete price table from the
+vendor's API (DigiKey: every packaging variation from ProductDetails). The browser
+compares it with a saved listing's tiers, marks an exact match verified
+(`priceCheckedAt`, `priceCheckSource`) and offers, but never silently applies, a
+different table. It reads no saved state and runs only on an officer's click.
+
+`scrapeListingPage` reads one amazon.com or jameco.com product link through Bright
+Data's Web Scraper API (synchronous scrape; a 202 answer returns a snapshot id that a
+later call collects). Documented price fields or a price-tier list are read
+deterministically and only USD is accepted; otherwise Gemini interprets the scraped
+record, and the result is marked so the browser does not treat it as verified. Prices
+from either route are saved with `priceSource: "scraped"` and called out in purchase
+plans until an officer confirms them.
 
 The browser saves a chosen candidate as an officer-maintained (`manual`) vendor
 listing on the new component, with its source and look-up date, in one undoable

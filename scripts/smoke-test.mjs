@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.06\.20"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.06\.23"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -680,6 +680,42 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.match(app.orderDraft.notes, /Note: Jameco only had one left/);
     app.orderDraft = null;
     app.setState({ orderForm: false });
+    // Combined pricing reads the real saved tiers: the tier reached, the next break, and wins only where a break is truly crossed.
+    app.supplierQuotes[bulkPart.id] = [vendorListing("tier", "Tier Co", 0.5, {
+      priceBreaks: [{ quantity: 1, unitPrice: 0.5 }, { quantity: bulkNeed, unitPrice: 0.3 }, { quantity: bulkNeed * 5, unitPrice: 0.2 }],
+    })];
+    app.setState({ scope: "global", gview: "combine", combine: { sp27: true } });
+    const tierRow = app.renderVals().comb.rows.find((row) => row.name === bulkLabel);
+    assert.equal(tierRow.tierText, "Tier Co: " + bulkNeed + "+ tier @ $0.300 · next break " + bulkNeed * 5 + "+ @ $0.200 (" + bulkNeed * 4 + " more pieces would cost $" + (bulkNeed * 5 * 0.2 - bulkNeed * 0.3).toFixed(2) + " more in total)");
+    assert.doesNotMatch(tierRow.tierStyle, /display:none/);
+    assert.equal(app.tierInfo(app.supplierQuotes[bulkPart.id][0], bulkNeed * 5, "Tier Co"), "Tier Co: " + bulkNeed * 5 + "+ tier @ $0.200 · best tier reached");
+    assert.equal(app.tierInfo(vendorListing("flat", "Flat Co", 0.4), 10, "Flat Co"), "Flat Co: Price @ $0.400 · flat price");
+    // A break is "won by combining" only when the combined quantity crosses it and no single semester does.
+    app.state.semesterDraft = { season: "Fall", year: 2027 };
+    app.createSemester();
+    app.updateTermKitUnits("fa27", bulkKit.id, 40);
+    app.setState({ scope: "global", gview: "combine", semesterId: "sp27" });
+    const twoSemesters = ["sp27", "fa27"].filter((id) => app.termNeed(bulkPart.id, [id]) > 0);
+    assert.deepEqual(twoSemesters, ["sp27", "fa27"], "a second planning semester needs the part: " + ["sp27", "fa27"].map((id) => id + "=" + app.termNeed(bulkPart.id, [id])).join(", "));
+    {
+      const per = twoSemesters.map((id) => app.termNeed(bulkPart.id, [id]));
+      const total = app.termNeed(bulkPart.id, twoSemesters);
+      const threshold = Math.max(...per) + 1;
+      assert.ok(total >= threshold);
+      app.supplierQuotes[bulkPart.id] = [vendorListing("win", "Win Co", 0.5, { priceBreaks: [{ quantity: 1, unitPrice: 0.5 }, { quantity: threshold, unitPrice: 0.1 }] })];
+      app.setState({ combine: Object.fromEntries(twoSemesters.map((id) => [id, true])) });
+      const winView = app.renderVals().comb;
+      assert.ok(winView.wins.some((win) => win.text.includes(bulkLabel + " at Win Co") && win.text.includes("clears the " + threshold + "-piece break")), "a crossed break is reported from the real tiers");
+      assert.equal(winView.winsEmptyStyle, "display:none");
+      app.supplierQuotes[bulkPart.id] = [vendorListing("nowin", "No-Win Co", 0.5, { priceBreaks: [{ quantity: 1, unitPrice: 0.5 }, { quantity: total * 100, unitPrice: 0.1 }] })];
+      assert.ok(!app.renderVals().comb.wins.some((win) => win.text.includes(bulkLabel)), "no win is invented when no break is crossed");
+    }
+    app.undoChange(app.changeLog.find((change) => change.entity === "terms" && !change.undoneAt).id);
+    assert.equal(app.termMap.fa27, undefined, "the temporary semester is removed again");
+    app.setState({ semesterId: "sp27" });
+    app.supplierQuotes[bulkPart.id] = [vendorListing("jam", "Jameco Test", 0.05), vendorListing("mou", "Mouser Test", 0.1)];
+    app.setState({ combine: { sp27: true } });
+
     // A vendor minimum above the quantity needed is priced, explained, and written into the order line as the quantity to buy.
     app.supplierQuotes[bulkPart.id] = [vendorListing("min", "Minimum Co", 0.1, { minimumOrderQuantity: bulkNeed + 5 })];
     const roundedPlan = app.vendorPlan(bulkPart.id, bulkNeed);
@@ -735,6 +771,194 @@ test("the data model initializes and can create a persisted semester", async () 
     app.supplierQuotes[bulkPart.id] = bulkQuotes;
     app.setState({ scope: "semester", semesterId: "sp27", view: "kits", gview: "home", combine: { fa26: true } });
 
+    // Price check against the vendor API: verified when the tiers match, offered (not applied) when they differ.
+    const priceSource = globalThis.window.LabKitDataSource;
+    const checkQuote = (extra = {}) => vendorListing("mchk", "Mouser", 0.5, {
+      vendorSku: "595-X", priceSource: "gemini-web", priceBreaks: [{ quantity: 1, unitPrice: 0.5 }, { quantity: 100, unitPrice: 0.3 }], ...extra,
+    });
+    const apiListing = (extra = {}) => ({ vendor: "Mouser", vendorSku: "595-X", manufacturerPartNumber: "X", packageType: "", minimumOrderQuantity: 1, orderMultiple: 1, available: 900,
+      priceBreaks: [{ quantity: 1, unitPrice: 0.5 }, { quantity: 100, unitPrice: 0.3 }], ...extra });
+    const checkCalls = [];
+    let checkResult = { matches: [apiListing()] };
+    priceSource.capabilities = { gemini: { configured: true }, suppliers: { mouser: true, digikey: true, newark: false } };
+    priceSource.checkVendorPricing = async (request) => { checkCalls.push(request); if (checkResult instanceof Error) throw checkResult; return checkResult; };
+    app.supplierQuotes[bulkPart.id] = [checkQuote()];
+    const quoteNow = () => app.supplierQuotes[bulkPart.id][0];
+    const checkState = () => app.state.priceChecks.mchk;
+    await app.checkListingPricing(bulkPart.id, "mchk");
+    assert.deepEqual(checkCalls, [{ vendor: "Mouser", sku: "595-X" }]);
+    assert.equal(checkState().status, "match");
+    assert.equal(quoteNow().priceSource, "", "a matching table clears the unverified tag");
+    assert.equal(quoteNow().priceCheckSource, "Mouser API");
+    assert.ok(quoteNow().priceCheckedAt);
+    assert.equal(app.vendors(bulkPart.id, 10).find((vendor) => vendor.id === "mchk").priceCheckedAt, quoteNow().priceCheckedAt);
+    app.undoChange(app.changeLog[0].id);
+    assert.equal(quoteNow().priceSource, "gemini-web");
+    // Different tiers are shown and applied only on request; undo restores the saved prices.
+    checkResult = { matches: [apiListing({ priceBreaks: [{ quantity: 1, unitPrice: 0.55 }, { quantity: 100, unitPrice: 0.35 }], available: 700, minimumOrderQuantity: 5 })] };
+    await app.checkListingPricing(bulkPart.id, "mchk");
+    assert.equal(checkState().status, "differs");
+    assert.match(checkState().message, /Mouser now shows 1 @ \$0\.550 · 100 @ \$0\.350 · saved: 1 @ \$0\.500 · 100 @ \$0\.300/);
+    assert.equal(quoteNow().priceBreaks[0].unitPrice, 0.5, "nothing changes until the officer applies it");
+    assert.equal(app.applyCheckedPrices(bulkPart.id, "mchk"), true);
+    assert.deepEqual(quoteNow().priceBreaks.map((row) => row.unitPrice), [0.55, 0.35]);
+    assert.equal(quoteNow().minimumOrderQuantity, 5);
+    assert.equal(quoteNow().available, 700);
+    assert.equal(quoteNow().priceSource, "");
+    assert.equal(checkState().status, "match");
+    app.undoChange(app.changeLog[0].id);
+    assert.equal(quoteNow().priceBreaks[0].unitPrice, 0.5);
+    assert.equal(quoteNow().priceSource, "gemini-web");
+    // Packaging ambiguity, a wrong SKU, and each setup problem explain themselves instead of guessing.
+    checkResult = { matches: [apiListing({ vendorSku: "A-1", packageType: "Cut Tape", manufacturerPartNumber: "595-X" }), apiListing({ vendorSku: "A-2", packageType: "Reel", manufacturerPartNumber: "595-X" })] };
+    await app.checkListingPricing(bulkPart.id, "mchk");
+    assert.equal(checkState().status, "ambiguous");
+    assert.match(checkState().message, /A-1 · Cut Tape, A-2 · Reel/);
+    checkResult = { matches: [apiListing({ vendorSku: "OTHER-9", manufacturerPartNumber: "Y" })] };
+    await app.checkListingPricing(bulkPart.id, "mchk");
+    assert.equal(checkState().status, "notfound");
+    app.supplierQuotes[bulkPart.id] = [checkQuote({ vendor: "Newark" })];
+    await app.checkListingPricing(bulkPart.id, "mchk");
+    assert.equal(checkState().status, "unsupported");
+    app.supplierQuotes[bulkPart.id] = [checkQuote({ vendorSku: "" })];
+    await app.checkListingPricing(bulkPart.id, "mchk");
+    assert.equal(checkState().status, "nosku");
+    app.supplierQuotes[bulkPart.id] = [checkQuote()];
+    priceSource.capabilities = { gemini: { configured: true }, suppliers: { mouser: false } };
+    checkCalls.length = 0;
+    await app.checkListingPricing(bulkPart.id, "mchk");
+    assert.equal(checkState().status, "unconfigured");
+    assert.equal(checkCalls.length, 0);
+    priceSource.capabilities = { gemini: { configured: true }, suppliers: { mouser: true } };
+    checkResult = Object.assign(new Error("not supported"), { code: "UNKNOWN_ACTION" });
+    await app.checkListingPricing(bulkPart.id, "mchk");
+    assert.match(checkState().message, /redeployed/);
+    delete priceSource.checkVendorPricing;
+    await app.checkListingPricing(bulkPart.id, "mchk");
+    assert.equal(checkState().status, "offline");
+    // The bulk tab checks exactly the listings its plan buys from.
+    priceSource.checkVendorPricing = async (request) => { checkCalls.push(request); return { matches: [apiListing()] }; };
+    checkCalls.length = 0;
+    app.setState({ scope: "global", gview: "combine", combine: { sp27: true } });
+    const checkRow = app.renderVals().comb.rows.find((row) => row.name === bulkLabel);
+    assert.doesNotMatch(checkRow.checkStyle, /display:none/);
+    await checkRow.checkPrices({ stopPropagation() {} });
+    assert.deepEqual(checkCalls, [{ vendor: "Mouser", sku: "595-X" }]);
+    assert.match(app.renderVals().comb.rows.find((row) => row.name === bulkLabel).checkText, /^Mouser: Matches Mouser/);
+    // Jameco and Amazon listings are checked by reading the linked page through Bright Data.
+    const pageQuote = (extra = {}) => vendorListing("pchk", "Jameco", 0.69, {
+      productUrl: "https://www.jameco.com/z/LM358N_23696.html", priceSource: "scraped",
+      priceBreaks: [{ quantity: 1, unitPrice: 0.69 }, { quantity: 100, unitPrice: 0.5 }], ...extra,
+    });
+    const pageCandidate = (extra = {}) => ({ vendor: "Jameco", vendorSku: "23696", name: "LM358N", available: 40, minimumOrderQuantity: 1,
+      priceBreaks: [{ quantity: 1, unitPrice: 0.69 }, { quantity: 100, unitPrice: 0.5 }], ...extra });
+    const scrapeCalls = [];
+    let scrapeResult = { status: "ok", method: "fields", candidate: pageCandidate() };
+    priceSource.capabilities = { gemini: { configured: true }, scraper: { configured: true, amazon: true, jameco: true } };
+    priceSource.scrapeListingPage = async (request) => { scrapeCalls.push(request); if (scrapeResult instanceof Error) throw scrapeResult; return scrapeResult; };
+    app.supplierQuotes[bulkPart.id] = [pageQuote()];
+    const pageState = () => app.state.priceChecks.pchk;
+    const pageNow = () => app.supplierQuotes[bulkPart.id][0];
+    await app.checkListingPricing(bulkPart.id, "pchk");
+    assert.equal(scrapeCalls[0].url, "https://www.jameco.com/z/LM358N_23696.html");
+    assert.equal(pageState().status, "match");
+    assert.equal(pageNow().priceSource, "", "a page read from the dataset's own fields clears the flag");
+    assert.equal(pageNow().priceCheckSource, "Jameco page (Bright Data)");
+    app.undoChange(app.changeLog[0].id);
+    assert.equal(pageNow().priceSource, "scraped");
+    // When Gemini had to interpret the record, a match is noted but the listing stays flagged.
+    scrapeResult = { status: "ok", method: "gemini", candidate: pageCandidate() };
+    await app.checkListingPricing(bulkPart.id, "pchk");
+    assert.equal(pageState().status, "match");
+    assert.match(pageState().message, /interpreted by Gemini/);
+    assert.equal(pageNow().priceSource, "scraped");
+    app.undoChange(app.changeLog[0].id);
+    // A page that shows fewer tiers than saved warns before anything is applied.
+    scrapeResult = { status: "ok", method: "fields", candidate: pageCandidate({ priceBreaks: [{ quantity: 1, unitPrice: 0.75 }] }) };
+    await app.checkListingPricing(bulkPart.id, "pchk");
+    assert.equal(pageState().status, "differs");
+    assert.match(pageState().message, /fewer tiers than you saved/);
+    assert.equal(app.applyCheckedPrices(bulkPart.id, "pchk"), true);
+    assert.equal(pageNow().priceBreaks.length, 1);
+    assert.equal(pageNow().priceCheckSource, "Jameco page (Bright Data)");
+    app.undoChange(app.changeLog[0].id);
+    assert.equal(pageNow().priceBreaks.length, 2);
+    // A slow scrape is collected with its snapshot id on the next click.
+    scrapeResult = { status: "pending", snapshotId: "s_abc123", message: "still reading" };
+    await app.checkListingPricing(bulkPart.id, "pchk");
+    assert.equal(pageState().status, "pending");
+    scrapeResult = { status: "ok", method: "fields", candidate: pageCandidate() };
+    scrapeCalls.length = 0;
+    await app.checkListingPricing(bulkPart.id, "pchk");
+    assert.equal(scrapeCalls[0].snapshotId, "s_abc123");
+    app.undoChange(app.changeLog[0].id);
+    // Missing link, no price, setup problems and an old backend each say what to do.
+    app.supplierQuotes[bulkPart.id] = [pageQuote({ productUrl: "" })];
+    await app.checkListingPricing(bulkPart.id, "pchk");
+    assert.equal(pageState().status, "nolink");
+    app.supplierQuotes[bulkPart.id] = [pageQuote()];
+    scrapeResult = { status: "ok", method: "fields", candidate: pageCandidate({ priceBreaks: [] }), message: "no USD price" };
+    await app.checkListingPricing(bulkPart.id, "pchk");
+    assert.equal(pageState().status, "noprice");
+    priceSource.capabilities = { scraper: { configured: true, amazon: true, jameco: false } };
+    scrapeCalls.length = 0;
+    await app.checkListingPricing(bulkPart.id, "pchk");
+    assert.equal(pageState().status, "unconfigured");
+    assert.match(pageState().message, /LABKIT_BRIGHTDATA_JAMECO_DATASET/);
+    assert.equal(scrapeCalls.length, 0);
+    priceSource.capabilities = { scraper: { configured: true, amazon: true, jameco: true } };
+    scrapeResult = Object.assign(new Error("x"), { code: "UNKNOWN_ACTION" });
+    await app.checkListingPricing(bulkPart.id, "pchk");
+    assert.match(pageState().message, /redeployed/);
+    delete priceSource.scrapeListingPage;
+    await app.checkListingPricing(bulkPart.id, "pchk");
+    assert.equal(pageState().status, "offline");
+    // New component from a pasted Jameco link: scraped, flagged as scraped, and called out in plans until checked.
+    const lookupCountBefore = checkCalls.length;
+    priceSource.scrapeListingPage = async (request) => { scrapeCalls.push(request); return { status: "ok", method: "fields", candidate: { ...pageCandidate(), vendor: "Jameco", name: "LM358N Scrape Test", productUrl: request.url } }; };
+    priceSource.lookupVendorComponent = async () => { throw new Error("Gemini web lookup must not run for a scraped vendor link"); };
+    app.openPicker("catalog", { create: true });
+    app.setPickerLookup({ url: "https://www.jameco.com/z/LM358N_23696.html" });
+    await app.pickerLookup();
+    assert.equal(app.state.picker.listing.priceSource, "scraped");
+    assert.equal(app.state.picker.draft.name, "LM358N Scrape Test");
+    assert.equal(app.state.picker.listing.productUrl, "https://www.jameco.com/z/LM358N_23696.html");
+    app.pickerCreate();
+    const scrapedPart = app.catalog.find((part) => part.name === "LM358N Scrape Test");
+    assert.equal(app.supplierQuotes[scrapedPart.id][0].priceSource, "scraped");
+    assert.match(app.vendorPlan(scrapedPart.id, 10).decision, /Jameco price was scraped from the vendor page/);
+    app.undoChange(app.changeLog[0].id);
+    // Without the Bright Data setup the same link falls back to the Gemini web lookup.
+    priceSource.capabilities = { gemini: { configured: true }, scraper: { configured: false } };
+    let geminiLookups = 0;
+    priceSource.lookupVendorComponent = async () => { geminiLookups += 1; return { candidates: [], message: "none" }; };
+    app.openPicker("catalog", { create: true });
+    app.setPickerLookup({ url: "https://www.jameco.com/z/LM358N_23696.html", query: "LM358N" });
+    await app.pickerLookup();
+    assert.equal(geminiLookups, 1);
+    app.closePicker();
+    delete priceSource.scrapeListingPage;
+    delete priceSource.lookupVendorComponent;
+    app.setState({ priceChecks: {} });
+    priceSource.capabilities = { gemini: { configured: true }, suppliers: { mouser: true, digikey: true, newark: false } };
+    priceSource.checkVendorPricing = async (request) => { checkCalls.push(request); return { matches: [apiListing()] }; };
+    app.supplierQuotes[bulkPart.id] = [checkQuote()];
+    await app.checkListingPricing(bulkPart.id, "mchk");
+    app.setState({ scope: "global", gview: "combine", combine: { sp27: true } });
+
+    // Part modal rows expose the controls and the verified note.
+    app.setState({ scope: "semester", semesterId: "sp27", view: "list" });
+    app.openPart(bulkPart.id);
+    app.setState({ modalTab: "vendors" });
+    const modalRow = app.renderVals().modal.vendors.find((row) => row.vendor === "Mouser");
+    assert.doesNotMatch(modalRow.checkStyle, /display:none/);
+    assert.match(modalRow.verifiedNote, /^Verified against Mouser API · /);
+    app.setState({ partId: null });
+    app.setState({ priceChecks: {} });
+    delete priceSource.checkVendorPricing;
+    delete priceSource.capabilities;
+    app.supplierQuotes[bulkPart.id] = [vendorListing("jam", "Jameco Test", 0.05), vendorListing("mou", "Mouser Test", 0.1)];
+
     // Every row key the new checkbox / vendor / note markup reads exists on the row view models.
     const templateBody = (source, listName) => {
       const start = source.indexOf('list="{{ ' + listName + ' }}"');
@@ -755,10 +979,16 @@ test("the data model initializes and can create a persisted semester", async () 
     const kitSample = app.renderVals().kit.rows[0];
     app.setState({ scope: "global", gview: "combine", combine: { sp27: true } });
     const combSample = app.renderVals().comb.rows[0];
-    for (const [listName, sample] of [["list.rows", listSample], ["kit.rows", kitSample], ["comb.rows", combSample]]) {
+    app.setState({ scope: "semester", semesterId: "sp27", view: "list" });
+    app.openPart(bulkPart.id);
+    app.setState({ modalTab: "vendors" });
+    const vendorSample = app.renderVals().modal.vendors[0];
+    app.setState({ partId: null, scope: "global", gview: "combine", combine: { sp27: true } });
+    for (const [listName, sample] of [["modal.vendors", vendorSample], ["list.rows", listSample], ["kit.rows", kitSample], ["comb.rows", combSample]]) {
       const body = templateBody(html, listName);
       assert.ok(body.length > 200, listName + " template found");
-      for (const [, key] of body.matchAll(/\{\{\s*r\.(\w+)\s*\}\}/g)) assert.ok(key in sample, listName + " rows are missing " + key);
+      const alias = listName === "modal.vendors" ? "v" : "r";
+      for (const [, key] of body.matchAll(new RegExp("\\{\\{\\s*" + alias + "\\.(\\w+)\\s*\\}\\}", "g"))) assert.ok(key in sample, listName + " rows are missing " + key);
     }
     app.setState({ scope: "semester", semesterId: "sp27", view: "kits", gview: "home", combine: { fa26: true } });
 
@@ -1434,6 +1664,24 @@ test("supplier and Gemini adapters normalize official API responses", async () =
   const requests = [];
   let geminiText = '{"ok":true}';
   let groundedStatus = 200;
+  let digikeyStatus = 200;
+  let brightStatus = 200;
+  let brightBody = [];
+  const digikeyBody = {
+    Product: {
+      ManufacturerProductNumber: "SN74HCT20N", Manufacturer: { Name: "Texas Instruments" },
+      Description: { ProductDescription: "IC GATE NAND 2CH 4-INP 14DIP" },
+      ProductUrl: "https://www.digikey.com/en/products/detail/texas-instruments/SN74HCT20N/277060",
+      DatasheetUrl: "https://www.ti.com/lit/ds/symlink/sn74hct20.pdf",
+      ProductVariations: [
+        { DigiKeyProductNumber: "296-1234-5-ND", PackageType: { Name: "Tube" }, MinimumOrderQuantity: 1, QuantityAvailableforPackageType: 1500,
+          StandardPricing: [{ BreakQuantity: 25, UnitPrice: 0.4, TotalPrice: 10 }, { BreakQuantity: 1, UnitPrice: 0.52, TotalPrice: 0.52 }] },
+        { DigiKeyProductNumber: "296-1234-6-ND", PackageType: { Name: "Cut Tape" }, MinimumOrderQuantity: 1, QuantityAvailableforPackageType: 900,
+          StandardPricing: [{ BreakQuantity: 1, UnitPrice: 0.6, TotalPrice: 0.6 }] },
+        { DigiKeyProductNumber: "no-price", PackageType: { Name: "Reel" }, StandardPricing: [] },
+      ],
+    },
+  };
   let groundedBody = {
     candidates: [{
       content: { parts: [{ text: "Mouser lists SN74HCT20N (595-SN74HCT20N), PDIP-14, $0.52 at 1 and $0.31 at 100, 1500 in stock." }] },
@@ -1464,6 +1712,14 @@ test("supplier and Gemini adapters normalize official API responses", async () =
             }],
           },
         };
+      } else if (url.includes("api.brightdata.com")) {
+        status = brightStatus;
+        body = brightBody;
+      } else if (url.includes("api.digikey.com/v1/oauth2/token")) {
+        body = { access_token: "dk-token", expires_in: 600 };
+      } else if (url.includes("api.digikey.com/products/v4/search/")) {
+        status = digikeyStatus;
+        body = digikeyStatus === 200 ? digikeyBody : { detail: "Product not found" };
       } else if (url.includes("api.element14.com")) {
         body = {
           keywordSearchReturn: {
@@ -1497,11 +1753,14 @@ test("supplier and Gemini adapters normalize official API responses", async () =
       };
     },
   };
+  const cacheValues = new Map();
+  const CacheService = { getScriptCache: () => ({ get: (key) => cacheValues.get(key) ?? null, put: (key, value) => cacheValues.set(key, value) }) };
   const api = new Function(
     "PropertiesService",
     "UrlFetchApp",
-    `${source}\nreturn { fetchMouserQuotes_, fetchNewarkQuotes_, callGeminiJson_, lookupVendorComponent_, parseNewComponentText_, configuredSuppliers_, publicCapabilities_, apiFailure_ };`,
-  )(PropertiesService, UrlFetchApp);
+    "CacheService",
+    `${source}\nreturn { scrapeListingPage_, checkVendorPricing_, fetchMouserQuotes_, fetchNewarkQuotes_, callGeminiJson_, lookupVendorComponent_, parseNewComponentText_, configuredSuppliers_, publicCapabilities_, apiFailure_ };`,
+  )(PropertiesService, UrlFetchApp, CacheService);
 
   const quotes = api.fetchMouserQuotes_({
     id: "c-test",
@@ -1606,6 +1865,99 @@ test("supplier and Gemini adapters normalize official API responses", async () =
   assert.equal(api.apiFailure_({ code: "AI_UNAVAILABLE", message: "x" }).error.code, "AI_UNAVAILABLE");
   assert.equal(api.apiFailure_({ code: "SUPPLIER_NOT_CONFIGURED", message: "not set" }).error.code, "SUPPLIER_NOT_CONFIGURED");
   assert.equal(api.apiFailure_({ code: "AI_NOT_CONFIGURED", message: "no key" }).error.code, "AI_NOT_CONFIGURED");
+
+  // Price check against the vendor's own API: full tier tables, packaging variations, and clear failures.
+  const mouserCheck = api.checkVendorPricing_({ payload: { vendor: "Mouser", sku: "595-TEST" } });
+  assert.equal(mouserCheck.exactCount, 1);
+  assert.equal(mouserCheck.matches[0].vendorSku, "595-TEST");
+  assert.deepEqual(mouserCheck.matches[0].priceBreaks.map((row) => [row.quantity, row.unitPrice]), [[1, 0.1], [100, 0.08]]);
+  assert.equal(mouserCheck.matches[0].minimumOrderQuantity, 5);
+  assert.equal(mouserCheck.matches[0].orderMultiple, 5);
+  assert.throws(() => api.checkVendorPricing_({ payload: { vendor: "DigiKey", sku: "296-1234-5-ND" } }), (error) => error.code === "SUPPLIER_NOT_CONFIGURED");
+  assert.throws(() => api.checkVendorPricing_({ payload: { vendor: "Jameco", sku: "1" } }), (error) => error.code === "INVALID_INPUT");
+  assert.throws(() => api.checkVendorPricing_({ payload: { vendor: "Mouser" } }), (error) => error.code === "INVALID_INPUT");
+  properties.set("LABKIT_DIGIKEY_CLIENT_ID", "dk-id");
+  properties.set("LABKIT_DIGIKEY_CLIENT_SECRET", "dk-secret");
+  properties.set("LABKIT_DIGIKEY_ACCOUNT_ID", "12345");
+  const digikeyStart = requests.length;
+  const digikeyCheck = api.checkVendorPricing_({ payload: { vendor: "DigiKey", sku: "296-1234-5-ND" } });
+  assert.equal(digikeyCheck.matches.length, 2, "a variation without prices is dropped");
+  assert.equal(digikeyCheck.exactCount, 1);
+  const tube = digikeyCheck.matches.find((row) => row.vendorSku === "296-1234-5-ND");
+  assert.equal(tube.packageType, "Tube");
+  assert.deepEqual(tube.priceBreaks.map((row) => [row.quantity, row.unitPrice]), [[1, 0.52], [25, 0.4]], "tiers come back sorted by quantity");
+  assert.equal(tube.available, 1500);
+  assert.equal(tube.manufacturerPartNumber, "SN74HCT20N");
+  const tokenRequest = requests[digikeyStart];
+  assert.match(tokenRequest.url, /v1\/oauth2\/token/);
+  assert.equal(tokenRequest.options.payload.grant_type, "client_credentials");
+  const detailsRequest = requests[digikeyStart + 1];
+  assert.match(detailsRequest.url, /\/products\/v4\/search\/296-1234-5-ND\/productdetails$/);
+  assert.equal(detailsRequest.options.headers.Authorization, "Bearer dk-token");
+  assert.equal(detailsRequest.options.headers["X-DIGIKEY-Account-Id"], "12345");
+  digikeyStatus = 404;
+  assert.throws(() => api.checkVendorPricing_({ payload: { vendor: "DigiKey", sku: "nope" } }), (error) => error.code === "SUPPLIER_UNAVAILABLE" && /DigiKey price check failed/.test(error.message));
+  digikeyStatus = 200;
+  ["LABKIT_DIGIKEY_CLIENT_ID", "LABKIT_DIGIKEY_CLIENT_SECRET", "LABKIT_DIGIKEY_ACCOUNT_ID"].forEach((key) => properties.delete(key));
+
+  // Page scraping through Bright Data for the two vendors that block ordinary requests.
+  const amazonUrl = "https://www.amazon.com/dp/B0TEST1234";
+  assert.throws(() => api.scrapeListingPage_({ payload: { url: amazonUrl } }), (error) => error.code === "SCRAPER_UNAVAILABLE" && /LABKIT_BRIGHTDATA_API_KEY/.test(error.message));
+  properties.set("LABKIT_BRIGHTDATA_API_KEY", "bd-key");
+  assert.deepEqual(api.publicCapabilities_().scraper, { configured: true, amazon: true, jameco: false });
+  assert.throws(() => api.scrapeListingPage_({ payload: { url: "https://www.jameco.com/z/LM358N_23696.html" } }), (error) => error.code === "SCRAPER_UNAVAILABLE" && /LABKIT_BRIGHTDATA_JAMECO_DATASET/.test(error.message));
+  assert.throws(() => api.scrapeListingPage_({ payload: { url: "https://www.mouser.com/ProductDetail/x" } }), (error) => error.code === "INVALID_INPUT");
+  assert.throws(() => api.scrapeListingPage_({ payload: { url: "http://www.amazon.com/dp/B0TEST1234" } }), (error) => error.code === "INVALID_INPUT");
+  brightBody = [{ title: "Resistor assortment kit", asin: "B0TEST1234", brand: "Acme", final_price: "$12.99", currency: "USD", availability: "In Stock" }];
+  const brightStart = requests.length;
+  const amazon = api.scrapeListingPage_({ payload: { url: amazonUrl, categories: ["Passive R"] } });
+  const brightRequest = requests[brightStart];
+  assert.match(brightRequest.url, /datasets\/v3\/scrape\?dataset_id=gd_l7q7dkf244hwjntr0&format=json/);
+  assert.equal(brightRequest.options.headers.Authorization, "Bearer bd-key");
+  assert.deepEqual(JSON.parse(brightRequest.options.payload), { input: [{ url: amazonUrl }] });
+  assert.equal(amazon.status, "ok");
+  assert.equal(amazon.method, "fields");
+  assert.equal(amazon.candidate.vendorSku, "B0TEST1234");
+  assert.deepEqual(amazon.candidate.priceBreaks, [{ quantity: 1, unitPrice: 12.99 }]);
+  assert.equal(amazon.candidate.productUrl, amazonUrl, "the link the officer gave is the product link");
+  assert.equal(amazon.candidate.unverifiedPrice, true);
+  assert.match(amazon.message, /single price, not quantity breaks/);
+  properties.set("LABKIT_BRIGHTDATA_JAMECO_DATASET", "gd_jameco_test");
+  brightBody = [{ title: "LM358N Dual Op Amp", item_id: "23696", brand: "Texas Instruments", mpn: "LM358N", price_breaks: [{ qty: "100", price: "$0.50" }, { qty: "1", price: "$0.69" }] }];
+  const jameco = api.scrapeListingPage_({ payload: { url: "https://www.jameco.com/z/LM358N_23696.html" } });
+  assert.match(requests.at(-1).url, /dataset_id=gd_jameco_test/);
+  assert.deepEqual(jameco.candidate.priceBreaks, [{ quantity: 1, unitPrice: 0.69 }, { quantity: 100, unitPrice: 0.5 }]);
+  assert.equal(jameco.candidate.name, "LM358N");
+  assert.doesNotMatch(jameco.message, /single price/);
+  // A job that outlasts the synchronous window is collected later with its snapshot id.
+  brightStatus = 202;
+  brightBody = { snapshot_id: "s_abc123", message: "still running" };
+  const pending = api.scrapeListingPage_({ payload: { url: amazonUrl } });
+  assert.deepEqual({ status: pending.status, snapshotId: pending.snapshotId, candidate: pending.candidate }, { status: "pending", snapshotId: "s_abc123", candidate: null });
+  brightStatus = 200;
+  brightBody = [{ title: "Resistor assortment kit", asin: "B0TEST1234", final_price: 11.5 }];
+  const collected = api.scrapeListingPage_({ payload: { url: amazonUrl, snapshotId: "s_abc123" } });
+  assert.match(requests.at(-1).url, /datasets\/v3\/snapshot\/s_abc123\?format=json/);
+  assert.equal(collected.candidate.priceBreaks[0].unitPrice, 11.5);
+  assert.throws(() => api.scrapeListingPage_({ payload: { url: amazonUrl, snapshotId: "bad id!" } }), (error) => error.code === "INVALID_INPUT");
+  // Failures and unknown record shapes: no guessing from the page, and AI interpretation stays labelled.
+  brightStatus = 500;
+  brightBody = { message: "upstream error" };
+  assert.throws(() => api.scrapeListingPage_({ payload: { url: amazonUrl } }), (error) => error.code === "SCRAPER_UNAVAILABLE" && /HTTP 500/.test(error.message));
+  brightStatus = 200;
+  brightBody = [];
+  assert.equal(api.scrapeListingPage_({ payload: { url: amazonUrl } }).status, "empty");
+  brightBody = [{ Product: "LM358P", cost_data: { first: "69 cents each" } }];
+  geminiText = JSON.stringify({ name: "LM358P", vendorSku: "J-1", manufacturer: "TI", description: "Dual op amp", packageName: "PDIP-8", category: "Op-Amp", available: 12, priceBreaks: [{ quantity: 1, unitPrice: 0.69 }] });
+  const interpreted = api.scrapeListingPage_({ payload: { url: "https://www.jameco.com/z/x.html", categories: ["Op-Amp"] } });
+  assert.equal(interpreted.method, "gemini");
+  assert.equal(interpreted.candidate.category, "Op-Amp");
+  assert.match(interpreted.message, /interpreted by Gemini/);
+  brightBody = [{ title: "Euro priced", final_price: 10, currency: "EUR" }];
+  geminiText = JSON.stringify({ name: "x", vendorSku: "", manufacturer: "", description: "", packageName: "", category: "", priceBreaks: [] });
+  assert.match(api.scrapeListingPage_({ payload: { url: amazonUrl } }).message, /no USD price was found/);
+  ["LABKIT_BRIGHTDATA_API_KEY", "LABKIT_BRIGHTDATA_JAMECO_DATASET"].forEach((key) => properties.delete(key));
+  assert.equal(api.apiFailure_({ code: "SCRAPER_UNAVAILABLE", message: "x" }).error.code, "SCRAPER_UNAVAILABLE");
 
   geminiText = JSON.stringify({
     name: "LM358P", vendor: "Jameco", vendorSku: "23048", manufacturer: "TI", description: "Dual op amp",

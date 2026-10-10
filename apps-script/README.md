@@ -49,6 +49,12 @@ and leaves that tab unchanged.
    - `LABKIT_DIGIKEY_CLIENT_SECRET` = DigiKey production application secret
    - `LABKIT_DIGIKEY_ACCOUNT_ID` = the account ID required by DigiKey's
      two-legged pricing request
+   - `LABKIT_BRIGHTDATA_API_KEY` = a Bright Data API key (optional; reads Jameco
+     and Amazon product pages, see "Checking a saved listing" below)
+   - `LABKIT_BRIGHTDATA_JAMECO_DATASET` = the dataset id (`gd_…`) shown on Bright
+     Data's Jameco scraper page
+   - `LABKIT_BRIGHTDATA_AMAZON_DATASET` = optional override; the Amazon products
+     dataset id is built in
 
    Gemini and the supplier integrations are deliberately optional. Without a
    Gemini key, the app uses a weighted historical forecast and requires manual
@@ -222,6 +228,27 @@ future semesters are retained.
   billed or limited separately from plain Gemini calls, so check Google's current
   pricing page. The Mouser, DigiKey and Newark credentials above are used only by
   "Refresh supplier quotes".
+- **Checking a saved listing against the vendor.** On a part's Vendors tab, each
+  Mouser or DigiKey listing has a **Check price** button (and the bulk-purchase
+  tab has **Check prices** per line, for the listings the plan buys from). It
+  asks the vendor's own API (`checkVendorPricing`) for that SKU's full price
+  table and compares it with the saved tiers. A match marks the listing verified
+  and clears any "read by Gemini" flag; a difference is shown and applied only if
+  an officer clicks **Use vendor prices**. It needs the Mouser Search key
+  (`LABKIT_MOUSER_API_KEY`) or the three DigiKey properties, and only calls a
+  vendor when someone clicks. The Mouser Order and Cart keys are not used and
+  should not be added.
+- **Jameco and Amazon pages.** Neither has a usable API and both refuse ordinary
+  automated requests, so a Jameco or Amazon listing's **Check price** button, and
+  a Jameco or Amazon product link pasted into the new-component dialog, use a
+  Bright Data Web Scraper API job for that one link (`scrapeListingPage`). It runs
+  only on a click, may take up to a minute (a slower job is collected on the next
+  click), is billed by Bright Data per record, and uses a service built to get
+  past the site's bot protection, so check Jameco's and Amazon's terms first.
+  A price read from the dataset's own fields can verify a listing; if Gemini had
+  to interpret the record, the result stays flagged. Amazon pages show one price,
+  not quantity breaks. Without the Bright Data setup these links fall back to the
+  Gemini lookup.
 - **Estimates stay labeled.** Existing design estimates remain useful before
   credentials are configured, but a verified acceptable API quote takes
   priority in cheapest-price calculations.

@@ -234,6 +234,7 @@
     capabilities: {
       gemini: { configured: false, canReadVendorUrls: false, inputMode: "web-or-paste" },
       suppliers: { mouser: false, digikey: false, newark: false },
+      scraper: { configured: false, amazon: false, jameco: false },
     },
     connectedUid: "",
     connectPromise: null,
@@ -883,6 +884,7 @@
         : {
           gemini: { configured: false, canReadVendorUrls: false, inputMode: "web-or-paste" },
           suppliers: { mouser: false, digikey: false, newark: false },
+      scraper: { configured: false, amazon: false, jameco: false },
         };
     },
 
@@ -953,6 +955,14 @@
 
     findReplacementComponents(payload) {
       return runEditorAction("findReplacementComponents", payload);
+    },
+
+    scrapeListingPage(payload) {
+      return runEditorAction("scrapeListingPage", payload);
+    },
+
+    checkVendorPricing(payload) {
+      return runEditorAction("checkVendorPricing", payload);
     },
 
     lookupVendorComponent(payload) {

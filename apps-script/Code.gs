@@ -23,6 +23,9 @@ const LABKIT_CONFIG = Object.freeze({
     digikeyClientId: "LABKIT_DIGIKEY_CLIENT_ID",
     digikeyClientSecret: "LABKIT_DIGIKEY_CLIENT_SECRET",
     digikeyAccountId: "LABKIT_DIGIKEY_ACCOUNT_ID",
+    brightDataApiKey: "LABKIT_BRIGHTDATA_API_KEY",
+    brightDataAmazonDataset: "LABKIT_BRIGHTDATA_AMAZON_DATASET",
+    brightDataJamecoDataset: "LABKIT_BRIGHTDATA_JAMECO_DATASET",
   }),
 });
 
@@ -220,6 +223,14 @@ function apiRequest(request) {
         requireRole_(user, ["admin"]);
         renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
         return apiSuccess_(lookupVendorComponent_(input));
+      case "scrapeListingPage":
+        requireRole_(user, ["admin"]);
+        renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
+        return apiSuccess_(scrapeListingPage_(input));
+      case "checkVendorPricing":
+        requireRole_(user, ["admin"]);
+        renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
+        return apiSuccess_(checkVendorPricing_(input));
       case "parseNewComponentText":
         requireRole_(user, ["admin"]);
         renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
@@ -244,9 +255,20 @@ function configuredSuppliers_() {
   };
 }
 
+// Bright Data scraping is only offered for the two vendors that block ordinary requests and have no API of their own.
+function configuredScraper_() {
+  const key = Boolean(getOptionalProperty_(LABKIT_CONFIG.properties.brightDataApiKey));
+  return {
+    configured: key,
+    amazon: key,
+    jameco: key && Boolean(getOptionalProperty_(LABKIT_CONFIG.properties.brightDataJamecoDataset)),
+  };
+}
+
 function publicCapabilities_() {
   return {
     suppliers: configuredSuppliers_(),
+    scraper: configuredScraper_(),
     gemini: {
       configured: Boolean(getOptionalProperty_(LABKIT_CONFIG.properties.geminiApiKey)),
       model: getOptionalProperty_(LABKIT_CONFIG.properties.geminiModel) || "gemini-2.5-flash",
@@ -1007,6 +1029,175 @@ function parseNewComponentText_(input) {
   };
 }
 
+const AMAZON_DEFAULT_DATASET_ = "gd_l7q7dkf244hwjntr0";
+
+// Bright Data's Web Scraper API fetches the one page an officer linked and returns its fields. This runs on an officer's click only.
+// A job that outlasts the one-minute synchronous window answers 202 with a snapshot id, which the browser sends back to collect it.
+function brightDataFetch_(url, options) {
+  const response = UrlFetchApp.fetch(url, Object.assign({ muteHttpExceptions: true }, options, {
+    headers: { Authorization: "Bearer " + getRequiredProperty_(LABKIT_CONFIG.properties.brightDataApiKey) },
+  }));
+  const code = response.getResponseCode();
+  let body = null;
+  const text = response.getContentText();
+  try { body = JSON.parse(text); } catch (error) {
+    body = text.split("\n").map(function (line) {
+      try { return JSON.parse(line); } catch (inner) { return null; }
+    }).filter(Boolean);
+  }
+  if (code === 202) return { pending: true, snapshotId: String(body && body.snapshot_id || "") };
+  if (code < 200 || code >= 300) {
+    const message = body && (body.message || body.error || body.detail);
+    throw new Error("Bright Data returned HTTP " + code + (message ? ": " + String(message).slice(0, 200) : "."));
+  }
+  return { pending: false, records: Array.isArray(body) ? body : (body ? [body] : []) };
+}
+
+function numberFromText_(value) {
+  if (typeof value === "number") return value;
+  const match = String(value === null || value === undefined ? "" : value).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  return match ? Number(match[0]) : NaN;
+}
+
+function firstField_(record, names) {
+  for (let index = 0; index < names.length; index += 1) {
+    const value = record[names[index]];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return undefined;
+}
+
+// Read a scraped record WITHOUT guessing: documented price fields, or a price-tier list if the dataset has one. Anything else is
+// left to the AI fallback (flagged separately). Only USD prices are accepted.
+function readScrapedRecord_(record) {
+  const currency = String(firstField_(record, ["currency", "price_currency"]) || "USD").toUpperCase();
+  const tiers = [];
+  ["price_breaks", "pricing", "price_tiers", "quantity_pricing", "volume_pricing", "bulk_pricing", "pricing_tiers"].forEach(function (key) {
+    if (tiers.length || !Array.isArray(record[key])) return;
+    record[key].forEach(function (row) {
+      if (!isPlainObject_(row)) return;
+      const quantity = numberFromText_(firstField_(row, ["quantity", "qty", "min_quantity", "min_qty", "from", "break_quantity", "quantity_from"]));
+      const price = numberFromText_(firstField_(row, ["price", "unit_price", "unitPrice", "cost"]));
+      if (Number.isFinite(quantity) && quantity >= 1 && Number.isFinite(price) && price >= 0) tiers.push({ quantity: Math.floor(quantity), unitPrice: price });
+    });
+  });
+  if (!tiers.length) {
+    const single = numberFromText_(firstField_(record, ["final_price", "price", "current_price", "unit_price", "sale_price"]));
+    if (Number.isFinite(single) && single >= 0) tiers.push({ quantity: 1, unitPrice: single });
+  }
+  tiers.sort(function (a, b) { return a.quantity - b.quantity; });
+  const stock = numberFromText_(firstField_(record, ["stock", "quantity_available", "inventory", "in_stock_quantity"]));
+  return {
+    currencyOk: currency === "USD",
+    priceBreaks: tiers,
+    name: String(firstField_(record, ["title", "name", "product_name"]) || ""),
+    vendorSku: String(firstField_(record, ["sku", "item_id", "item_number", "asin", "product_id", "id"]) || ""),
+    manufacturerPartNumber: String(firstField_(record, ["mpn", "manufacturer_part_number", "manufacturer_part_no", "model", "part_number"]) || ""),
+    manufacturer: String(firstField_(record, ["brand", "manufacturer", "manufacturer_name"]) || ""),
+    description: String(firstField_(record, ["description", "about", "product_description"]) || ""),
+    available: Number.isFinite(stock) ? Math.max(0, Math.floor(stock)) : null,
+  };
+}
+
+function scrapeListingPage_(input) {
+  const payload = requirePlainObject_(input.payload, "payload");
+  const url = requireString_(payload.url, "url", 600);
+  const host = hostOf_(url);
+  const vendor = /(^|\.)amazon\.com$/.test(host) ? "Amazon" : /(^|\.)jameco\.com$/.test(host) ? "Jameco" : "";
+  if (!vendor) throw appError_("INVALID_INPUT", "The page scraper is set up for amazon.com and jameco.com links.");
+  const scraper = configuredScraper_();
+  if (!scraper[vendor.toLowerCase()]) {
+    throw appError_(
+      "SCRAPER_UNAVAILABLE",
+      vendor === "Jameco" && scraper.configured
+        ? "Add the Bright Data dataset id for Jameco as LABKIT_BRIGHTDATA_JAMECO_DATASET in Apps Script Project Settings."
+        : "Bright Data is not connected. Add LABKIT_BRIGHTDATA_API_KEY in Apps Script Project Settings."
+    );
+  }
+  const categories = arrayOrEmpty_(payload.categories).filter(function (value) {
+    return typeof value === "string" && value.trim() && value.length <= 80;
+  }).slice(0, 40);
+  const snapshotId = typeof payload.snapshotId === "string" ? payload.snapshotId.trim() : "";
+  if (snapshotId && !/^[A-Za-z0-9_-]{4,80}$/.test(snapshotId)) throw appError_("INVALID_INPUT", "snapshotId is invalid.");
+  const dataset = vendor === "Amazon"
+    ? (getOptionalProperty_(LABKIT_CONFIG.properties.brightDataAmazonDataset) || AMAZON_DEFAULT_DATASET_)
+    : getRequiredProperty_(LABKIT_CONFIG.properties.brightDataJamecoDataset);
+  let fetched;
+  try {
+    fetched = snapshotId
+      ? brightDataFetch_("https://api.brightdata.com/datasets/v3/snapshot/" + encodeURIComponent(snapshotId) + "?format=json", { method: "get" })
+      : brightDataFetch_("https://api.brightdata.com/datasets/v3/scrape?dataset_id=" + encodeURIComponent(dataset) + "&format=json", {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify({ input: [{ url: url }] }),
+      });
+  } catch (error) {
+    throw appError_("SCRAPER_UNAVAILABLE", vendor + " page scrape failed: " + safeProviderMessage_(error));
+  }
+  if (fetched.pending) {
+    return {
+      vendor: vendor, status: "pending", snapshotId: fetched.snapshotId, candidate: null,
+      message: "Bright Data is still reading the " + vendor + " page. Click again in about a minute to collect it.",
+    };
+  }
+  const record = fetched.records.find(isPlainObject_);
+  if (!record) {
+    return { vendor: vendor, status: "empty", snapshotId: "", candidate: null, message: "Bright Data returned nothing for that " + vendor + " link. Check that it is a product page." };
+  }
+  const read = readScrapedRecord_(record);
+  let method = "fields";
+  let candidate = {
+    vendor: vendor, vendorSku: read.vendorSku, name: read.manufacturerPartNumber || read.name, manufacturer: read.manufacturer,
+    description: read.description, category: "", packageName: "", productUrl: url, datasheetUrl: "", available: read.available,
+    leadTime: "", priceBreaks: read.currencyOk ? read.priceBreaks : [],
+  };
+  if (!candidate.priceBreaks.length && getOptionalProperty_(LABKIT_CONFIG.properties.geminiApiKey)) {
+    // Dataset fields were not recognised: Gemini reads the scraped record (not the live web) and any price it finds stays AI-flagged.
+    method = "gemini";
+    const prompt = [
+      "Extract a product and its USD price tiers from this scraped vendor record. Use only the record; never invent or estimate a value.",
+      "Leave unknown values as empty strings or null. Price breaks are per-unit USD prices. Choose category only from this list, or leave it empty: " + JSON.stringify(categories),
+      "Record:\n" + JSON.stringify(record).slice(0, 12000),
+    ].join("\n");
+    const schema = {
+      type: "object",
+      properties: {
+        name: { type: "string" }, vendorSku: { type: "string" }, manufacturer: { type: "string" }, description: { type: "string" },
+        packageName: { type: "string" },
+        category: categories.length ? { type: "string", enum: categories.concat([""]) } : { type: "string" },
+        available: { type: "integer", minimum: 0, nullable: true },
+        priceBreaks: { type: "array", items: { type: "object", properties: { quantity: { type: "integer", minimum: 1 }, unitPrice: { type: "number", minimum: 0 } }, required: ["quantity", "unitPrice"] } },
+      },
+      required: ["name", "vendorSku", "manufacturer", "description", "packageName", "category", "priceBreaks"],
+    };
+    const extracted = callGeminiJson_(prompt, schema) || {};
+    candidate.name = String(extracted.name || candidate.name).slice(0, 160);
+    candidate.vendorSku = String(extracted.vendorSku || candidate.vendorSku).slice(0, 160);
+    candidate.manufacturer = String(extracted.manufacturer || candidate.manufacturer).slice(0, 160);
+    candidate.description = String(extracted.description || candidate.description).slice(0, 1200);
+    candidate.packageName = String(extracted.packageName || "").slice(0, 120);
+    candidate.category = categories.indexOf(String(extracted.category || "")) >= 0 ? String(extracted.category) : "";
+    candidate.available = extracted.available === null || extracted.available === undefined ? candidate.available : Math.max(0, Math.floor(numberOrZero_(extracted.available)));
+    candidate.priceBreaks = arrayOrEmpty_(extracted.priceBreaks).slice(0, 20).map(function (row) {
+      return { quantity: Math.max(1, numberOrZero_(row.quantity) || 1), unitPrice: Number(row.unitPrice) };
+    }).filter(function (row) { return Number.isFinite(row.unitPrice) && row.unitPrice >= 0; }).sort(function (a, b) { return a.quantity - b.quantity; });
+  }
+  candidate.name = String(candidate.name || "").slice(0, 160);
+  candidate.description = String(candidate.description || "").slice(0, 1200);
+  candidate.minimumOrderQuantity = candidate.priceBreaks.length ? candidate.priceBreaks[0].quantity : 1;
+  candidate.unitPrice = candidate.priceBreaks.length ? candidate.priceBreaks[0].unitPrice : null;
+  candidate.source = "Bright Data scrape of the " + vendor + " page";
+  candidate.unverifiedPrice = candidate.priceBreaks.length > 0;
+  return {
+    vendor: vendor, status: "ok", snapshotId: "", method: method, candidate: candidate,
+    message: !candidate.priceBreaks.length
+      ? "The " + vendor + " page was read but no USD price was found. Type the price tiers yourself."
+      : "Read from the " + vendor + " page by Bright Data" + (method === "gemini" ? " and interpreted by Gemini" : "") +
+        ". " + (read.priceBreaks.length > 1 || method === "gemini" ? "" : "This page shows a single price, not quantity breaks. ") +
+        "Confirm the prices before ordering.",
+  };
+}
+
 function nextPlanningSemester_(date) {
   const month = date.getMonth() + 1;
   const year = date.getFullYear();
@@ -1239,6 +1430,103 @@ function fetchNewarkQuotes_(component, quantity) {
       meetsRequirements: null,
     };
   }).filter(Boolean);
+}
+
+// DigiKey's ProductDetails returns the full standard price table for every packaging variation (cut tape, tape & reel, Digi-Reel).
+// Field names are read defensively: anything missing simply yields an empty value.
+function fetchDigiKeyVariations_(productNumber) {
+  const clientId = getRequiredProperty_(LABKIT_CONFIG.properties.digikeyClientId);
+  const accountId = getRequiredProperty_(LABKIT_CONFIG.properties.digikeyAccountId);
+  const token = getDigiKeyAccessToken_();
+  const url = "https://api.digikey.com/products/v4/search/" + encodeURIComponent(productNumber) + "/productdetails";
+  const response = UrlFetchApp.fetch(url, {
+    method: "get",
+    headers: {
+      Authorization: "Bearer " + token,
+      "X-DIGIKEY-Client-Id": clientId,
+      "X-DIGIKEY-Account-Id": accountId,
+      "X-DIGIKEY-Locale-Site": "US",
+      "X-DIGIKEY-Locale-Language": "en",
+      "X-DIGIKEY-Locale-Currency": "USD",
+    },
+    muteHttpExceptions: true,
+  });
+  const body = parseProviderResponse_(response, "DigiKey");
+  const product = isPlainObject_(body.Product) ? body.Product : body;
+  const description = isPlainObject_(product.Description) ? (product.Description.ProductDescription || product.Description.DetailedDescription) : product.Description;
+  return arrayOrEmpty_(product.ProductVariations).map(function (variation) {
+    const breaks = arrayOrEmpty_(variation.StandardPricing).map(function (entry) {
+      return { quantity: Math.max(1, numberOrZero_(entry.BreakQuantity) || 1), unitPrice: Number(entry.UnitPrice), currency: "USD" };
+    }).filter(function (entry) { return Number.isFinite(entry.unitPrice) && entry.unitPrice >= 0; })
+      .sort(function (a, b) { return a.quantity - b.quantity; });
+    return {
+      vendor: "DigiKey",
+      vendorSku: String(variation.DigiKeyProductNumber || ""),
+      packageType: String(variation.PackageType && variation.PackageType.Name || ""),
+      manufacturerPartNumber: String(product.ManufacturerProductNumber || ""),
+      manufacturer: String(product.Manufacturer && product.Manufacturer.Name || ""),
+      description: String(description || ""),
+      productUrl: String(product.ProductUrl || ""),
+      datasheetUrl: String(product.DatasheetUrl || ""),
+      minimumOrderQuantity: Math.max(1, numberOrZero_(variation.MinimumOrderQuantity) || 1),
+      orderMultiple: 1,
+      available: numberOrZero_(variation.QuantityAvailableforPackageType !== undefined ? variation.QuantityAvailableforPackageType : product.QuantityAvailable),
+      priceBreaks: breaks,
+      source: "DigiKey Product Information API",
+    };
+  }).filter(function (entry) { return entry.vendorSku && entry.priceBreaks.length; });
+}
+
+// Return the vendor's own price tiers for a saved SKU so the browser can compare them with the saved listing. Reads no saved state.
+function checkVendorPricing_(input) {
+  const payload = requirePlainObject_(input.payload, "payload");
+  const vendor = requireString_(payload.vendor, "vendor", 40);
+  const sku = requireString_(payload.sku, "sku", 160);
+  if (vendor !== "Mouser" && vendor !== "DigiKey") {
+    throw appError_("INVALID_INPUT", "Price checks are available for Mouser and DigiKey listings.");
+  }
+  const configured = configuredSuppliers_();
+  if (!configured[vendor.toLowerCase()]) {
+    throw appError_("SUPPLIER_NOT_CONFIGURED", vendor + " is not configured. Add its API credentials in Apps Script Project Settings.");
+  }
+  let matches;
+  try {
+    matches = vendor === "Mouser"
+      ? fetchMouserQuotes_({ id: "check", name: sku, mfr: "", pkg: "" }, 1).map(function (quote) {
+        return {
+          vendor: "Mouser",
+          vendorSku: quote.vendorSku,
+          packageType: "",
+          manufacturerPartNumber: quote.manufacturerPartNumber,
+          manufacturer: quote.manufacturer,
+          description: quote.description,
+          productUrl: quote.productUrl,
+          datasheetUrl: quote.datasheetUrl,
+          minimumOrderQuantity: quote.minimumOrderQuantity,
+          orderMultiple: quote.orderMultiple,
+          available: quote.available,
+          priceBreaks: quote.priceBreaks.map(function (entry) { return { quantity: entry.quantity, unitPrice: entry.unitPrice, currency: entry.currency }; }),
+          source: quote.source,
+        };
+      })
+      : fetchDigiKeyVariations_(sku);
+  } catch (error) {
+    throw appError_("SUPPLIER_UNAVAILABLE", vendor + " price check failed: " + safeProviderMessage_(error));
+  }
+  const wanted = sku.toLowerCase();
+  const exact = matches.filter(function (entry) {
+    return entry.vendorSku.toLowerCase() === wanted || entry.manufacturerPartNumber.toLowerCase() === wanted;
+  });
+  return {
+    vendor: vendor,
+    sku: sku,
+    matches: matches.slice(0, 12),
+    exactCount: exact.length,
+    checkedAt: new Date().toISOString(),
+    message: matches.length
+      ? vendor + " returned " + matches.length + " priced " + (matches.length === 1 ? "listing" : "listings") + " for " + sku + "."
+      : vendor + " returned no priced listing for " + sku + ". Check the SKU.",
+  };
 }
 
 function getDigiKeyAccessToken_() {
@@ -2464,7 +2752,7 @@ function apiFailure_(error) {
     "INVALID_INPUT", "INVALID_REQUEST_ID",
     "INVALID_SESSION", "INVALID_SNAPSHOT", "NOT_INITIALIZED", "SCHEMA_CONFLICT",
     "SCHEMA_ERROR", "SNAPSHOT_TOO_LARGE", "STATE_CORRUPT", "UNKNOWN_ACTION",
-    "SUPPLIER_UNAVAILABLE", "SUPPLIER_NOT_CONFIGURED", "AI_NOT_CONFIGURED", "AI_UNAVAILABLE", "VERSION_CONFLICT",
+    "SUPPLIER_UNAVAILABLE", "SUPPLIER_NOT_CONFIGURED", "AI_NOT_CONFIGURED", "AI_UNAVAILABLE", "SCRAPER_UNAVAILABLE", "VERSION_CONFLICT",
   ];
   const code = error && safeCodes.indexOf(error.code) >= 0 ? error.code : "INTERNAL";
   const message = code === "INTERNAL"
