@@ -189,6 +189,7 @@
       historicalDataVersion: source.historicalDataVersion || null,
       orderDataVersion: source.orderDataVersion || null,
       supplierReferenceDataVersion: source.supplierReferenceDataVersion || null,
+      cartImportVersion: source.cartImportVersion || null,
       dataSchemaVersion: source.dataSchemaVersion || null,
       state: {
         overrides: state.overrides || {},

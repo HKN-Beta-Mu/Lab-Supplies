@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.06\.25"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.11\.1"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -1215,6 +1215,144 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.equal(lastSaved.bagTypes.length, 4);
     assert.equal(lastSaved.state.priceTestValues, undefined);
     assert.equal(lastSaved.state.priceTestOpen, undefined);
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("the purchase-cart import adds the cart parts, vendor listings and individual items once", async () => {
+  const html = await read("index.html");
+  const historicalSales = await read("src/historical-sales.js");
+  const cartImport = await read("src/cart-import.js");
+  const logic = html.match(/<script type="text\/x-dc"[^>]*>([\s\S]*?)<\/script>/)?.[1];
+  let lastSaved = null;
+  let loadFrom = null;
+  class LogicStub {
+    constructor(props) { this.props = props; this.state = {}; }
+    setState(update) {
+      const patch = typeof update === "function" ? update(this.state) : update;
+      this.state = { ...this.state, ...patch };
+    }
+    forceUpdate() {}
+  }
+  globalThis.window = {
+    confirm: () => true,
+    LabKitDataSource: { load: () => loadFrom, save: (data) => { lastSaved = JSON.parse(JSON.stringify(data)); } },
+  };
+  try {
+    new Function(historicalSales)();
+    new Function(cartImport)();
+    const data = window.LabKitCartImport;
+    assert.equal(data.lines.length, 49, "all 30 DigiKey, 17 Jameco and 2 Mouser cart lines are present");
+    const App = new Function("DCLogic", "React", `${logic}\nreturn Component;`)(LogicStub, {});
+    const app = new App({});
+    app.flash = () => {};
+    assert.equal(app.cartImportVersion, data.version);
+    assert.equal(app.catalog.length, 53 + 2 + 4, "two new components plus four approved-alternative parts");
+    assert.equal(app.kits.length, 7 + 2);
+    const quoteBySku = (componentId, sku) => (app.supplierQuotes[componentId] || []).find((quote) => quote.vendorSku === sku);
+
+    // Exact parts: SKU, price at the cart quantity and stock come from the cart; the superseded seeded listing is replaced, not duplicated.
+    const hct20 = quoteBySku("hct20", "296-2135-5-ND");
+    assert.deepEqual([hct20.vendor, hct20.priceBreaks[0].quantity, hct20.unitPrice, hct20.available], ["DigiKey", 501, 0.51176, 501]);
+    assert.equal(hct20.manufacturerPartNumber, "CD74HCT20E");
+    assert.equal(app.supplierQuotes.hct00.filter((quote) => quote.vendor === "Jameco" && quote.vendorSku === "44871").length, 1);
+    assert.equal(quoteBySku("hct00", "44871").unitPrice, 0.49);
+    assert.equal(quoteBySku("hct00", "44871").seeded, true);
+    const r1k = app.supplierQuotes.r1k.filter((quote) => quote.vendor === "DigiKey");
+    assert.deepEqual(r1k.map((quote) => quote.vendorSku).sort(), ["738-CF14JA1K00CT-ND", "CF14JT1K00TR-ND"], "two different 1 kΩ DigiKey parts are both kept");
+    assert.match(quoteBySku("r1k", "738-CF14JA1K00CT-ND").productUrl, /CF14JA1K00/, "the old product link is carried over");
+    // The two SMD capacitors stay not-approved, exactly as the earlier purchasing-sheet import decided.
+    assert.equal(quoteBySku("c01u", "4491-MC2-0603B104M500BF3-ND").meetsRequirements, false);
+    // A different part than the catalog entry becomes an approved alternative awaiting verification.
+    const tl082 = app.approvedAlternatives("tl072").find((alt) => alt.pn === "TL082ACP");
+    assert.ok(tl082);
+    assert.equal(tl082.matchLabel, "From purchase cart · verify");
+    const tl082Quote = app.supplierQuotes[tl082.componentId][0];
+    assert.deepEqual([tl082Quote.vendor, tl082Quote.vendorSku, tl082Quote.unitPrice, tl082Quote.priceBreaks[0].quantity], ["Mouser", "595-TL082ACP", 0.602, 120]);
+    assert.equal(tl082Quote.requirementsPending, true);
+    assert.deepEqual(["dipsw", "tl1105", "r3r96"].map((id) => app.approvedAlternatives(id).length), [1, 1, 1]);
+
+    // The two DigiKey links become individual items: component, product link, and a general-item kit each.
+    const power = app.map["cart-bbp-32701"];
+    assert.equal(power.mfr, "BUD Industries");
+    assert.equal(power.base, 0);
+    const powerLink = app.supplierQuotes["cart-bbp-32701"][0];
+    assert.equal(powerLink.productUrl, "https://www.digikey.com/en/products/detail/bud-industries/BBP-32701/8602382");
+    assert.equal(powerLink.vendorSku, "377-2647-ND");
+    assert.equal(powerLink.referenceOnly, true);
+    assert.equal(app.supplierQuotes["cart-16-00138"][0].productUrl, "https://www.digikey.com/en/products/detail/tensility-international-corp/16-00138/10324427");
+    for (const [kitId, itemId] of [["kit-cart-bbp-32701", "cart-bbp-32701"], ["kit-cart-16-00138", "cart-16-00138"]]) {
+      const kit = app.kitMap[kitId];
+      assert.equal(kit.individual, true);
+      assert.deepEqual(app.kitItemsForTerm(kit, "fa26").map((item) => [item.p, item.q]), [[itemId, 1]]);
+      assert.ok(app.inventory.packedKits[kitId]);
+    }
+    assert.doesNotThrow(() => app.renderVals());
+
+    // Idempotent: running it again, or from an older snapshot, adds nothing; an officer's edit is never overwritten.
+    const counts = () => [app.catalog.length, app.kits.length, Object.values(app.supplierQuotes).flat().length];
+    const before = counts();
+    app.applyCartImport();
+    app.cartImportVersion = null;
+    app.applyCartImport();
+    assert.deepEqual(counts(), before);
+    const edited = quoteBySku("hct00", "44871");
+    delete edited.seeded;
+    edited.priceBreaks = [{ quantity: 1, unitPrice: 9 }];
+    app.cartImportVersion = null;
+    app.applyCartImport();
+    assert.deepEqual(counts(), before);
+    assert.equal(quoteBySku("hct00", "44871").priceBreaks[0].unitPrice, 9, "an officer-edited listing is kept");
+
+    // It travels with the shared snapshot: a saved snapshot reloads without duplicates, and an older one is upgraded once.
+    app.persistData();
+    assert.equal(lastSaved.cartImportVersion, data.version);
+    loadFrom = JSON.parse(JSON.stringify(lastSaved));
+    const reloaded = new App({});
+    reloaded.restoreData();
+    assert.equal(reloaded.catalog.length, app.catalog.length);
+    assert.equal(reloaded.kits.length, app.kits.length);
+    assert.equal(reloaded.cartImportVersion, data.version);
+    assert.equal(reloaded.supplierQuotes.hct00.filter((quote) => quote.vendorSku === "44871").length, 1);
+    // A snapshot saved BEFORE the import existed (the live sheet) is upgraded once, and its officer edits survive.
+    delete window.LabKitCartImport;
+    loadFrom = null;
+    const legacy = new App({});
+    assert.equal(legacy.catalog.length, 53);
+    assert.equal(legacy.cartImportVersion, undefined);
+    const legacyQuote = legacy.supplierQuotes.hct00.find((quote) => quote.vendorSku === "44871");
+    delete legacyQuote.seeded;
+    legacyQuote.priceBreaks = [{ quantity: 1, unitPrice: 7 }];
+    legacy.persistData();
+    const legacyJson = JSON.stringify(lastSaved);
+    const freshLegacy = () => JSON.parse(legacyJson);
+    assert.equal(freshLegacy().cartImportVersion, null);
+    assert.equal((freshLegacy().supplierQuotes.hct20 || []).length, 0, "the older snapshot has no cart listings");
+    window.LabKitCartImport = data;
+    loadFrom = freshLegacy();
+    const upgraded = new App({});
+    upgraded.restoreData();
+    assert.equal(upgraded.catalog.length, app.catalog.length, "the older snapshot gains the cart parts");
+    assert.equal(upgraded.kits.length, app.kits.length);
+    assert.equal(upgraded.cartImportVersion, data.version);
+    assert.equal(upgraded.supplierQuotes.hct00.find((quote) => quote.vendorSku === "44871").priceBreaks[0].unitPrice, 7, "the officer's price survives the import");
+    assert.equal(upgraded.supplierQuotes.hct00.filter((quote) => quote.vendorSku === "44871").length, 1);
+    assert.equal(upgraded.supplierQuotes.hct20.some((quote) => quote.vendorSku === "296-2135-5-ND"), true);
+    const upgradedAgain = new App({});
+    upgradedAgain.restoreData();
+    assert.equal(upgradedAgain.catalog.length, app.catalog.length);
+    // Shared-sheet mode: the app starts with the import applied, then the older sheet data arrives afterwards.
+    loadFrom = null;
+    const late = new App({});
+    assert.equal(late.cartImportVersion, data.version);
+    late.applySavedData(freshLegacy());
+    assert.equal(late.catalog.length, app.catalog.length);
+    assert.equal(late.supplierQuotes.hct20.some((quote) => quote.vendorSku === "296-2135-5-ND"), true, "late-arriving older data still gets the import");
+    assert.equal(late.supplierQuotes.hct00.find((quote) => quote.vendorSku === "44871").priceBreaks[0].unitPrice, 7);
+    assert.equal(late.kits.length, app.kits.length);
+    late.applySavedData(JSON.parse(JSON.stringify(lastSaved)));
+    assert.equal(late.catalog.length, app.catalog.length);
   } finally {
     delete globalThis.window;
   }

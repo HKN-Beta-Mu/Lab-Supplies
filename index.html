@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-  <meta name="labkit-build" content="2026.10.06.25">
+  <meta name="labkit-build" content="2026.10.11.1">
 <title>LabKit · Component Procurement</title>
 <link rel="stylesheet" href="./src/auth.css">
 <script type="module" src="./src/firebase.js"></script>
 <script type="module" src="./src/auth.js"></script>
 <script src="./src/historical-sales.js"></script>
+<script src="./src/cart-import.js"></script>
 <script src="./src/data-source.js"></script>
 <script src="./support.js"></script>
 </head>
@@ -65,7 +66,7 @@
 
 <aside id="labkit-auth-session" class="labkit-auth-session" aria-label="Signed-in account" hidden>
   <span id="labkit-session-user"></span>
-  <span class="labkit-build-id">v2026.10.06.25</span>
+  <span class="labkit-build-id">v2026.10.11.1</span>
   <button id="labkit-session-sign-out" type="button">Sign out</button>
 </aside>
 
@@ -1408,6 +1409,7 @@ class Component extends DCLogic {
     this.onSharedDataLoaded=this.onSharedDataLoaded.bind(this);
     this.onDataStatus=this.onDataStatus.bind(this);
     this.onDataConflict=this.onDataConflict.bind(this);
+    this.applyCartImport();
   }
 
   restoreData(){
@@ -1490,7 +1492,9 @@ class Component extends DCLogic {
         this.supplierQuotes=imported;
       }
     }
+    this.cartImportVersion=saved.cartImportVersion||null;
     this.migratePlanningModels();
+    this.applyCartImport();
   }
 
   onSharedDataLoaded(event){
@@ -1522,6 +1526,7 @@ class Component extends DCLogic {
       historicalDataVersion:this.historicalDataVersion,
       orderDataVersion:'real-orders-v1',
       supplierReferenceDataVersion:this.supplierReferenceDataVersion,
+      cartImportVersion:this.cartImportVersion||null,
       dataSchemaVersion:'2026-10-06-v5',
       state:stableState,
       catalog:this.catalog,
@@ -1925,7 +1930,57 @@ class Component extends DCLogic {
   }
   toggleTermKitOffering(termId,kitId){const term=this.termMap[termId],kit=this.kitMap[kitId];if(!term||!kit||!this.confirmTermEdit(term,'change whether '+kit.code+' is offered'))return;const before=this.clone(term);term.kitOfferings=term.kitOfferings||{};term.kitOfferings[kitId]=!this.isKitOffered(termId,kitId);if(!term.kitOfferings[kitId]){if(term.plannedKits)term.plannedKits[kitId]=0;if(kit.seriesKey&&term.items)term.items[kit.seriesKey]=0;else if(term.kits)term.kits[kit.code]=0;}term.sales=this.kits.reduce((sum,k)=>sum+this.rawKitSales(k,termId),0);if(term.actualPending===true&&term.inventoryApplied)term.inventoryAllocation=this.buildInventoryAllocation(term.plannedKits||{},true,term.kitOfferings);this.recordChange('edit','term',termId,before,term,(term.kitOfferings[kitId]?'Enabled ':'Marked not offered: ')+kit.code+' in '+term.label);this.forceUpdate();}
   kitUnitCost(kit,termId){return this.kitItemsForTerm(kit,termId).reduce((sum,it)=>sum+(Number(it.q)||0)*this.best(it.p,Math.max(1,Number(it.q)||1)).unit,0);}
-  addKit(){const draft=this.state.kitDraft||{},code=String(draft.code||'').trim(),name=String(draft.name||'').trim();if(!code||!name){this.flash('Enter both a kit code and name');return;}const id='kit-'+this.hash(code+name+Date.now()).toString(36),before={kits:this.clone(this.kits),kitVersions:this.clone(this.kitVersions),lineupVersions:this.clone(this.lineupVersions),terms:this.clone(this._terms)},now=new Date().toISOString(),kit={id,code,name,individual:Boolean(draft.individual),fav:false,active:true,sp26:{sold:0,summer:0,remaining:0,faulty:0,fallNeed:0,summerNeed:0,total:0,purchase:0},items:[]},version={id:id+'-v1',kitId:id,number:1,label:'Initial definition',effectiveFrom:'future',effectiveTo:'',salePrice:null,bagTypeId:'',items:[],createdAt:now,source:'Officer-created kit'};kit.latestVersionId=version.id;this.kits.push(kit);this.kitVersions.push(version);this.kitMap[id]=kit;this.inventory.packedKits[id]=kit.individual?{onHand:0,reserved:0,location:'',countedAt:'',note:'',calculationMode:'direct'}:{prepared:0,reserved:0,faulty:0,location:'',countedAt:'',note:'',basisTermId:'fa26',calculationMode:'sales'};const lineup=this.createLineupVersion('Added '+code);this.terms.filter(t=>this.status(t.id)==='Planning').forEach(t=>{t.kitOfferings=t.kitOfferings||{};t.kitOfferings[id]=true;t.kitVersions=t.kitVersions||{};t.plannedKits=t.plannedKits||{};t.plannedKits[id]=0;t.lineupVersionId=lineup.id;});this.recordChange('create','lineup',id,before,{kits:this.kits,kitVersions:this.kitVersions,lineupVersions:this.lineupVersions,terms:this._terms},'Added '+code+' to the active kit lineup');this.setState({kitForm:false,kitDraft:{code:'',name:'',individual:false},scope:'global',gview:'build',builderKitId:id,builderTargetTermId:'future'});this.startKitEdit(id,'future',version.id);}
+  // One-time import of the purchase carts in src/cart-import.js: components that are not yet in the catalog, approved-alternative parts, the individual
+  // items, and a vendor listing for every cart line (SKU, price at the cart quantity, stock). Versioned in the shared snapshot, so later edits are kept.
+  applyCartImport(){
+    const data=window.LabKitCartImport;if(!data||this.cartImportVersion===data.version)return;
+    const slug=v=>String(v).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''),keyOf=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    (data.parts||[]).forEach(p=>{
+      if(this.map[p.id]||this.findComponentMatches({name:p.name}).some(m=>m.level==='exact'))return;
+      const made=this.createCatalogComponent({id:p.id,name:p.name,cat:p.cat,mfr:p.mfr,pkg:p.pkg,role:p.role},{record:false});
+      if(made.part){made.part.base=Math.max(0,Number(p.base)||0);made.part.specs=p.specs||made.part.specs;made.part.note=p.note||'';}
+    });
+    (data.links||[]).forEach(l=>{
+      const list=this.supplierQuotes[l.component]=this.supplierQuotes[l.component]||[],id='cart-link-'+slug(l.vendor+'-'+l.component);
+      if(!this.map[l.component]||list.some(q=>q.id===id))return;
+      list.push({id,vendor:l.vendor,vendorSku:l.sku||'',productUrl:l.productUrl,priceBreaks:[],unitPrice:null,minimumOrderQuantity:1,orderMultiple:1,shippingCost:null,available:null,leadTime:'check supplier',checkedAt:data.cartDate+'T12:00:00.000Z',notes:'Product link from the '+data.cartDate+' purchase list. No price entered yet; use Check price or add the price tiers.',domestic:true,meetsRequirements:true,requirementsPending:false,requirementReason:'Exact-part product link.',manual:true,verified:false,autoRefresh:false,referenceOnly:true,seeded:true,source:'Imported product link'});
+    });
+    (data.lines||[]).forEach(line=>{
+      let componentId=line.component;
+      if(componentId.startsWith('alt:')){
+        const original=componentId.slice(4),spec=(data.alternatives||{})[original];if(!this.map[original]||!spec)return;
+        this._alts=this._alts||{};const alts=this._alts[original]=this._alts[original]||[];
+        let alt=alts.find(a=>keyOf(a.pn)===keyOf(spec.pn));
+        if(!alt){alt={pn:spec.pn,mfr:spec.mfr,pkg:spec.pkg,match:'cart',matchLabel:'From purchase cart · verify',note:spec.note,unit:'Price in cart',vendor:line.vendor,url:'',datasheetUrl:''};alts.push(alt);}
+        const part=this.ensureAlternativeCatalogEntry(original,alt);if(!part)return;componentId=part.id;
+      }
+      if(!this.map[componentId])return;
+      const list=this.supplierQuotes[componentId]=this.supplierQuotes[componentId]||[],id='cart-'+data.cartDate+'-'+slug(line.vendor+'-'+line.sku);
+      if(list.some(q=>q.id===id))return;
+      const same=q=>q.vendor===line.vendor&&[line.sku,line.mpn].filter(Boolean).some(k=>keyOf(q.vendorSku)===keyOf(k)),officer=list.find(q=>q.seeded!==true&&same(q)),seeded=list.find(q=>q.seeded===true&&same(q));
+      if(officer)return;
+      const wanted=line.compat==='ok'?true:line.compat==='no'?false:null,compat=seeded&&seeded.meetsRequirements===false?false:wanted;
+      const quote={id,vendor:line.vendor,vendorSku:line.sku,manufacturerPartNumber:line.mpn||'',productUrl:seeded?seeded.productUrl:'',priceBreaks:[{quantity:line.qty,unitPrice:line.unit,currency:'USD'}],unitPrice:line.unit,minimumOrderQuantity:1,orderMultiple:1,shippingCost:null,available:line.available==null?null:line.available,leadTime:'check supplier',checkedAt:data.cartDate+'T12:00:00.000Z',
+        notes:'In the '+data.cartDate+' '+line.vendor+' cart: '+this.num(line.qty)+' @ $'+line.unit+' ('+(line.mpn?line.mpn+' · ':'')+line.desc+'). Only the price at the cart quantity was captured, not the other price tiers.'+(seeded&&seeded.notes?' Earlier note: '+seeded.notes:''),
+        domestic:true,meetsRequirements:compat,requirementsPending:compat!==true,requirementReason:compat===true?'Same part as the purchasing sheet; an officer should still re-check it before ordering.':compat===false?(seeded&&seeded.requirementReason)||'Not approved for the recorded lab requirements.':'A different part from the catalog entry; an officer must verify it before ordering.',
+        manual:true,verified:false,autoRefresh:false,referenceOnly:false,seeded:true,source:'Imported from the '+data.cartDate+' purchase cart'};
+      this.supplierQuotes[componentId]=[...list.filter(q=>q!==seeded),quote];
+    });
+    (data.kits||[]).forEach(k=>{if(!this.kitMap[k.id]&&this.map[k.item])this.createKit({id:k.id,code:k.code,name:k.name,individual:true,items:[{p:k.item,q:1}],source:'Imported from the '+data.cartDate+' purchase list',record:false});});
+    this.cartImportVersion=data.version;
+  }
+  // Creates a kit (or general item) with its first version, lineup entry, inventory record and planning-semester offering. addKit and the cart import both use it.
+  createKit({id,code,name,individual=false,items=[],source='Officer-created kit',record=true}){
+    const before={kits:this.clone(this.kits),kitVersions:this.clone(this.kitVersions),lineupVersions:this.clone(this.lineupVersions),terms:this.clone(this._terms)},now=new Date().toISOString(),start=items.map(i=>({p:i.p,q:Math.max(1,Number(i.q)||1),note:i.note||''}));
+    const kit={id,code,name,individual:Boolean(individual),fav:false,active:true,sp26:{sold:0,summer:0,remaining:0,faulty:0,fallNeed:0,summerNeed:0,total:0,purchase:0},items:this.clone(start)},version={id:id+'-v1',kitId:id,number:1,label:'Initial definition',effectiveFrom:'future',effectiveTo:'',salePrice:null,bagTypeId:'',items:this.clone(start),createdAt:now,source};
+    kit.latestVersionId=version.id;this.kits.push(kit);this.kitVersions.push(version);this.kitMap[id]=kit;
+    this.inventory.packedKits[id]=kit.individual?{onHand:0,reserved:0,location:'',countedAt:'',note:'',calculationMode:'direct'}:{prepared:0,reserved:0,faulty:0,location:'',countedAt:'',note:'',basisTermId:'fa26',calculationMode:'sales'};
+    const lineup=this.createLineupVersion('Added '+code);
+    this.terms.filter(t=>this.status(t.id)==='Planning').forEach(t=>{t.kitOfferings=t.kitOfferings||{};t.kitOfferings[id]=true;t.kitVersions=t.kitVersions||{};t.plannedKits=t.plannedKits||{};t.plannedKits[id]=0;t.lineupVersionId=lineup.id;});
+    if(record)this.recordChange('create','lineup',id,before,{kits:this.kits,kitVersions:this.kitVersions,lineupVersions:this.lineupVersions,terms:this._terms},'Added '+code+' to the active kit lineup');
+    return{kit,version};
+  }
+  addKit(){const draft=this.state.kitDraft||{},code=String(draft.code||'').trim(),name=String(draft.name||'').trim();if(!code||!name){this.flash('Enter both a kit code and name');return;}const id='kit-'+this.hash(code+name+Date.now()).toString(36),{version}=this.createKit({id,code,name,individual:Boolean(draft.individual)});this.setState({kitForm:false,kitDraft:{code:'',name:'',individual:false},scope:'global',gview:'build',builderKitId:id,builderTargetTermId:'future'});this.startKitEdit(id,'future',version.id);}
   toggleKitActive(kitId){const kit=this.kitMap[kitId];if(!kit)return;const next=kit.active===false;if(!window.confirm((next?'Reactivate ':'Decommission ')+kit.code+'? Historical semesters and versions will be kept.'))return;const before={kits:this.clone(this.kits),kitVersions:this.clone(this.kitVersions),lineupVersions:this.clone(this.lineupVersions),terms:this.clone(this._terms)};kit.active=next;const lineup=this.createLineupVersion((next?'Reactivated ':'Decommissioned ')+kit.code);this.terms.filter(t=>this.status(t.id)==='Planning').forEach(t=>{t.kitOfferings=t.kitOfferings||{};t.kitOfferings[kit.id]=next;if(!next&&t.plannedKits)t.plannedKits[kit.id]=0;t.lineupVersionId=lineup.id;t.sales=this.kits.reduce((sum,k)=>sum+this.rawKitSales(k,t.id),0);if(t.inventoryApplied)t.inventoryAllocation=this.buildInventoryAllocation(t.plannedKits||{},true,t.kitOfferings);});this.recordChange('edit','lineup',kit.id,before,{kits:this.kits,kitVersions:this.kitVersions,lineupVersions:this.lineupVersions,terms:this._terms},(next?'Reactivated ':'Decommissioned ')+kit.code);this.forceUpdate();}
   startKitEdit(kitId,targetTermId,versionId){
     const kit=this.kitMap[kitId];if(!kit)return;
@@ -2262,7 +2317,7 @@ class Component extends DCLogic {
     let listing=null;
     if(this.listingHasContent(data.vendorListing)){const built=this.buildManualQuote(data.vendorListing,null);if(built.error)return{error:built.error};listing=built.quote;}
     const before=record?(listing?{catalog:this.clone(this.catalog),inventory:this.clone(this.inventory),supplierQuotes:this.clone(this.supplierQuotes)}:this.clone(this.catalog)):null,cat=String(data.cat||'').trim()||(this.catalog[0]&&this.catalog[0].cat)||'Other',pkg=String(data.pkg||'').trim()||'—',mfr=String(data.mfr||'').trim()||'Unspecified',price=parseFloat(data.base);
-    let id='u'+this.hash(name+Date.now()+this.catalog.length).toString(36);while(this.map[id])id+='x';
+    let id=String(data.id||'').trim()||'u'+this.hash(name+Date.now()+this.catalog.length).toString(36);while(this.map[id])id+='x';
     const part={id,name,cat,base:price>0?price:0.25,pkg,mfr,jameco:'',stock:0,role:String(data.role||'').trim()||(name+' — added manually.'),specs:[['Package',pkg],['Manufacturer',mfr]],note:'',flags:[]};
     if(String(data.datasheetUrl||'').trim())part.ds=String(data.datasheetUrl).trim();
     this.catalog.push(part);this.map[id]=part;
