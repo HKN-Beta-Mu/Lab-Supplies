@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.11\.1"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.11\.2"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -1247,7 +1247,9 @@ test("the purchase-cart import adds the cart parts, vendor listings and individu
     const App = new Function("DCLogic", "React", `${logic}\nreturn Component;`)(LogicStub, {});
     const app = new App({});
     app.flash = () => {};
-    assert.equal(app.cartImportVersion, data.version);
+    const batchVersions = window.LabKitImportBatches.map((batch) => batch.version);
+    assert.deepEqual(batchVersions, [data.version, "2026-10-11-amazon"]);
+    assert.deepEqual(app.cartImportApplied, batchVersions);
     assert.equal(app.catalog.length, 53 + 2 + 4, "two new components plus four approved-alternative parts");
     assert.equal(app.kits.length, 7 + 2);
     const quoteBySku = (componentId, sku) => (app.supplierQuotes[componentId] || []).find((quote) => quote.vendorSku === sku);
@@ -1294,33 +1296,35 @@ test("the purchase-cart import adds the cart parts, vendor listings and individu
     const counts = () => [app.catalog.length, app.kits.length, Object.values(app.supplierQuotes).flat().length];
     const before = counts();
     app.applyCartImport();
-    app.cartImportVersion = null;
+    app.cartImportApplied = [];
     app.applyCartImport();
     assert.deepEqual(counts(), before);
     const edited = quoteBySku("hct00", "44871");
     delete edited.seeded;
     edited.priceBreaks = [{ quantity: 1, unitPrice: 9 }];
-    app.cartImportVersion = null;
+    app.cartImportApplied = [];
     app.applyCartImport();
     assert.deepEqual(counts(), before);
     assert.equal(quoteBySku("hct00", "44871").priceBreaks[0].unitPrice, 9, "an officer-edited listing is kept");
 
     // It travels with the shared snapshot: a saved snapshot reloads without duplicates, and an older one is upgraded once.
     app.persistData();
-    assert.equal(lastSaved.cartImportVersion, data.version);
+    assert.deepEqual(lastSaved.cartImportApplied, batchVersions);
     loadFrom = JSON.parse(JSON.stringify(lastSaved));
     const reloaded = new App({});
     reloaded.restoreData();
     assert.equal(reloaded.catalog.length, app.catalog.length);
     assert.equal(reloaded.kits.length, app.kits.length);
-    assert.equal(reloaded.cartImportVersion, data.version);
+    assert.deepEqual(reloaded.cartImportApplied, batchVersions);
     assert.equal(reloaded.supplierQuotes.hct00.filter((quote) => quote.vendorSku === "44871").length, 1);
     // A snapshot saved BEFORE the import existed (the live sheet) is upgraded once, and its officer edits survive.
+    const batches = window.LabKitImportBatches;
     delete window.LabKitCartImport;
+    delete window.LabKitImportBatches;
     loadFrom = null;
     const legacy = new App({});
     assert.equal(legacy.catalog.length, 53);
-    assert.equal(legacy.cartImportVersion, undefined);
+    assert.equal(legacy.cartImportApplied, undefined);
     const legacyQuote = legacy.supplierQuotes.hct00.find((quote) => quote.vendorSku === "44871");
     delete legacyQuote.seeded;
     legacyQuote.priceBreaks = [{ quantity: 1, unitPrice: 7 }];
@@ -1328,14 +1332,16 @@ test("the purchase-cart import adds the cart parts, vendor listings and individu
     const legacyJson = JSON.stringify(lastSaved);
     const freshLegacy = () => JSON.parse(legacyJson);
     assert.equal(freshLegacy().cartImportVersion, null);
+    assert.deepEqual(freshLegacy().cartImportApplied, []);
     assert.equal((freshLegacy().supplierQuotes.hct20 || []).length, 0, "the older snapshot has no cart listings");
     window.LabKitCartImport = data;
+    window.LabKitImportBatches = batches;
     loadFrom = freshLegacy();
     const upgraded = new App({});
     upgraded.restoreData();
     assert.equal(upgraded.catalog.length, app.catalog.length, "the older snapshot gains the cart parts");
     assert.equal(upgraded.kits.length, app.kits.length);
-    assert.equal(upgraded.cartImportVersion, data.version);
+    assert.deepEqual(upgraded.cartImportApplied, batchVersions);
     assert.equal(upgraded.supplierQuotes.hct00.find((quote) => quote.vendorSku === "44871").priceBreaks[0].unitPrice, 7, "the officer's price survives the import");
     assert.equal(upgraded.supplierQuotes.hct00.filter((quote) => quote.vendorSku === "44871").length, 1);
     assert.equal(upgraded.supplierQuotes.hct20.some((quote) => quote.vendorSku === "296-2135-5-ND"), true);
@@ -1345,7 +1351,7 @@ test("the purchase-cart import adds the cart parts, vendor listings and individu
     // Shared-sheet mode: the app starts with the import applied, then the older sheet data arrives afterwards.
     loadFrom = null;
     const late = new App({});
-    assert.equal(late.cartImportVersion, data.version);
+    assert.deepEqual(late.cartImportApplied, batchVersions);
     late.applySavedData(freshLegacy());
     assert.equal(late.catalog.length, app.catalog.length);
     assert.equal(late.supplierQuotes.hct20.some((quote) => quote.vendorSku === "296-2135-5-ND"), true, "late-arriving older data still gets the import");
@@ -1353,6 +1359,154 @@ test("the purchase-cart import adds the cart parts, vendor listings and individu
     assert.equal(late.kits.length, app.kits.length);
     late.applySavedData(JSON.parse(JSON.stringify(lastSaved)));
     assert.equal(late.catalog.length, app.catalog.length);
+
+    // The two Amazon purchases: logged as orders to receive later (no semester, no price), with the pack size on the trimpot listing.
+    assert.deepEqual(app.orders.map((order) => order.id).sort(), ["AMZ-B07JNB712X", "AMZ-B0CX5NPJ8F"]);
+    const orderById = (id) => app.orders.find((order) => order.id === id);
+    assert.deepEqual(orderById("AMZ-B07JNB712X").lines.map((line) => [line[0], line[1]]), [["wred", 8], ["wblk", 8]]);
+    assert.deepEqual(app.orders.map((order) => order.terms.length), [0, 0], "no semester, so these never feed price history");
+    assert.equal(orderById("AMZ-B0CX5NPJ8F").status, "ordered");
+    const potQuote = quoteBySku("p5k", "B0CX5NPJ8F");
+    assert.deepEqual([potQuote.packSize, potQuote.minimumOrderQuantity, potQuote.orderMultiple], [50, 50, 50]);
+    assert.ok(app.supplierQuotes.wred.some((quote) => quote.vendor === "Amazon" && quote.vendorSku === "B07JNB712X" && quote.productUrl.includes("B07JNB712X")));
+    assert.ok(app.supplierQuotes.wblk.some((quote) => quote.vendor === "Amazon" && quote.vendorSku === "B07JNB712X"));
+    // Deleting an imported order or listing is permanent: the batch is remembered and never re-applied.
+    const keepOrders = app.orders;
+    app.orders = app.orders.filter((order) => order.id !== "AMZ-B07JNB712X");
+    app.applyCartImport();
+    assert.equal(app.orders.some((order) => order.id === "AMZ-B07JNB712X"), false);
+    app.orders = keepOrders;
+
+    // Receiving: the view shows packs and counts; units = ordered units x units per pack; only what is not yet counted is added.
+    const onHand = (id) => app.inventoryRow("component", id).onHand || 0;
+    app.setState({ scope: "global", gview: "orders", orderOpen: "AMZ-B07JNB712X" });
+    let detail = app.renderVals().ord.detail;
+    assert.equal(detail.lines[0].qty, "8");
+    assert.equal(detail.lines[0].inInventory, "0 of 8");
+    assert.equal(detail.lines[0].unit, "Unpriced");
+    assert.equal(detail.lines[0].ext, "—");
+    assert.doesNotMatch(detail.receiveAllStyle, /display:none/);
+    const wireBefore = [onHand("wred"), onHand("wblk")];
+    detail.lines[0].receive({ stopPropagation() {} });
+    assert.equal(onHand("wred"), wireBefore[0] + 8);
+    assert.equal(onHand("wblk"), wireBefore[1], "only the red spools were added");
+    assert.equal(orderById("AMZ-B07JNB712X").status, "ordered");
+    detail = app.renderVals().ord.detail;
+    assert.equal(detail.lines[0].inInventory, "8 of 8");
+    assert.match(detail.lines[0].receiveStyle, /display:none/);
+    detail.lines[1].onReceiveQty({ target: { value: "3" } });
+    app.renderVals().ord.detail.lines[1].receive({ stopPropagation() {} });
+    assert.equal(onHand("wblk"), wireBefore[1] + 3, "a partial amount can be received");
+    assert.equal(app.receiveOrder("AMZ-B07JNB712X"), true);
+    assert.equal(onHand("wblk"), wireBefore[1] + 8);
+    assert.equal(orderById("AMZ-B07JNB712X").status, "received", "fully received orders are marked received");
+    assert.equal(app.receiveOrder("AMZ-B07JNB712X"), false);
+    assert.equal(onHand("wblk"), wireBefore[1] + 8, "a second click adds nothing");
+
+    // 5 packs x 50 = 250 trimpots, in two steps, then undo restores both the inventory and the order.
+    const potsBefore = onHand("p5k");
+    assert.equal(app.orderLinePack(orderById("AMZ-B0CX5NPJ8F").lines[0]), 50);
+    assert.equal(app.receiveOrder("AMZ-B0CX5NPJ8F", { 0: 2 }), true);
+    assert.equal(onHand("p5k"), potsBefore + 100);
+    assert.equal(app.map.p5k.stock, potsBefore + 100);
+    assert.equal(orderById("AMZ-B0CX5NPJ8F").status, "ordered");
+    assert.equal(app.receiveOrder("AMZ-B0CX5NPJ8F"), true);
+    assert.equal(onHand("p5k"), potsBefore + 250);
+    assert.equal(orderById("AMZ-B0CX5NPJ8F").status, "received");
+    app.undoChange(app.changeLog[0].id);
+    assert.equal(onHand("p5k"), potsBefore + 100);
+    assert.equal(orderById("AMZ-B0CX5NPJ8F").status, "ordered");
+    assert.equal(orderById("AMZ-B0CX5NPJ8F").lines[0][7], 2);
+    app.undoChange(app.changeLog.find((change) => change.entity === "receive" && !change.undoneAt).id);
+    assert.equal(onHand("p5k"), potsBefore);
+    assert.equal(app.map.p5k.stock, potsBefore);
+    assert.equal(orderById("AMZ-B0CX5NPJ8F").lines[0][7] || 0, 0);
+
+    // Packaging bags add packs x bag quantity; a bought replacement part stocks itself; cancelled orders and already-counted orders add nothing.
+    const replacement = app.approvedAlternatives("tl072")[0].componentId;
+    const bagBefore = app.inventoryRow("bag", "bag-ece2031").onHand || 0;
+    app.orders.unshift({ id: "T-MIX", date: "2026-10-12", vendor: "ULINE", status: "ordered", terms: [], lines: [["bag:bag-ece2031", 2, 10, "ULINE"], [replacement, 7, 0.5, "Mouser"]] });
+    assert.equal(app.receiveOrder("T-MIX"), true);
+    assert.equal(app.inventoryRow("bag", "bag-ece2031").onHand, bagBefore + 200);
+    assert.equal(onHand(replacement), 7);
+    app.orders.unshift({ id: "T-CANCELLED", date: "2026-10-12", vendor: "X", status: "cancelled", terms: [], lines: [["hct00", 5, 0.1, "X"]] });
+    const hct00Before = onHand("hct00");
+    assert.equal(app.receiveOrder("T-CANCELLED"), false);
+    assert.equal(onHand("hct00"), hct00Before);
+    app.orders.unshift({ id: "T-OLD", date: "2024-01-01", vendor: "X", status: "received", terms: [], lines: [["hct00", 10, 0.1, "X"]] });
+    assert.equal(app.markOrderCounted("T-OLD"), true);
+    assert.equal(app.receiveOrder("T-OLD"), false, "an order marked already counted can never be added again");
+    assert.equal(onHand("hct00"), hct00Before);
+
+    // Paid prices are per piece and an unpriced line is never a $0 purchase.
+    app.orders.unshift({ id: "T-PAID", date: "2025-02-01", vendor: "Amazon", status: "received", terms: ["sp26"], lines: [["p5k", 5, 10, "Amazon", "", "", 50], ["hct00", 3, 0, "Nobody"]] });
+    assert.equal(app.paid("p5k", "sp26").unit, 0.2);
+    assert.equal(app.paid("hct00", "sp26"), null);
+
+    // Fill an unpriced line from the saved listing: per pack = per-piece listing price x pack size.
+    assert.equal(app.fillOrderLinePrice("AMZ-B0CX5NPJ8F", 0), false, "no priced listing yet");
+    potQuote.priceBreaks = [{ quantity: 50, unitPrice: 0.2, currency: "USD" }];
+    potQuote.unitPrice = 0.2;
+    assert.equal(app.fillOrderLinePrice("AMZ-B0CX5NPJ8F", 0), true);
+    assert.equal(orderById("AMZ-B0CX5NPJ8F").lines[0][2], 10);
+    app.setState({ orderOpen: "AMZ-B0CX5NPJ8F" });
+    assert.equal(app.renderVals().ord.detail.lines[0].unit, "$10.00 / pack");
+    assert.match(app.renderVals().ord.detail.lines[0].qty, /^5 × 50 = 250 units$/);
+
+    // The Amazon price check is pack-aware: the page's pack price is divided by the pack size.
+    const amazonSource = globalThis.window.LabKitDataSource;
+    const pagePrice = { value: 10 };
+    amazonSource.capabilities = { scraper: { configured: true, amazon: true, jameco: false } };
+    amazonSource.scrapeListingPage = async () => ({ status: "ok", method: "fields", candidate: { vendor: "Amazon", vendorSku: "B0CX5NPJ8F", name: "Trimpots", available: null, priceBreaks: [{ quantity: 1, unitPrice: pagePrice.value }], minimumOrderQuantity: 1 } });
+    await app.checkListingPricing("p5k", potQuote.id);
+    assert.equal(app.state.priceChecks[potQuote.id].status, "match", "$10 per pack of 50 equals $0.20 each");
+    pagePrice.value = 12;
+    await app.checkListingPricing("p5k", potQuote.id);
+    assert.equal(app.state.priceChecks[potQuote.id].status, "differs");
+    assert.match(app.state.priceChecks[potQuote.id].message, /page price per pack ÷ 50/);
+    assert.equal(app.applyCheckedPrices("p5k", potQuote.id), true);
+    const updated = quoteBySku("p5k", "B0CX5NPJ8F");
+    assert.ok(Math.abs(updated.priceBreaks[0].unitPrice - 0.24) < 1e-9);
+    assert.equal(updated.priceBreaks[0].quantity, 50);
+    assert.deepEqual([updated.minimumOrderQuantity, updated.orderMultiple], [50, 50]);
+    delete amazonSource.scrapeListingPage;
+    delete amazonSource.capabilities;
+
+    // The order form: units per pack is editable, shown, and kept when the order is saved.
+    app.openOrderForm({ id: "T-FORM", date: "2026-10-12", vendor: "Amazon", status: "ordered", terms: [], lines: [["p5k", 5, 0, "Amazon", "", "", 50]] });
+    let formLine = app.renderVals().ord.form.lines[0];
+    assert.equal(formLine.pack, 50);
+    assert.equal(formLine.addsLabel, "adds 250 to inventory");
+    assert.equal(formLine.unit, "Unpriced");
+    formLine.onPack({ target: { value: "25" } });
+    assert.equal(app.renderVals().ord.form.lines[0].addsLabel, "adds 125 to inventory");
+    app.saveOrder();
+    assert.equal(orderById("T-FORM").lines[0][6], 25);
+    app.setState({ gview: "orders", orderOpen: "T-FORM", orderForm: false });
+
+    // Every key the new order markup reads exists on the view models.
+    const bodyOf = (source, listName) => {
+      const start = source.indexOf('list="{{ ' + listName + ' }}"');
+      const open = source.indexOf(">", start) + 1;
+      let depth = 1;
+      let cursor = open;
+      while (depth > 0) {
+        const nextOpen = source.indexOf("<template", cursor);
+        const nextClose = source.indexOf("</template>", cursor);
+        if (nextClose < 0) break;
+        if (nextOpen >= 0 && nextOpen < nextClose) { depth += 1; cursor = nextOpen + 9; } else { depth -= 1; cursor = nextClose + 11; }
+      }
+      return source.slice(open, cursor - 11);
+    };
+    const orderView = app.renderVals().ord;
+    for (const [listName, sample] of [["ord.detail.lines", orderView.detail.lines[0]]]) {
+      for (const [, key] of bodyOf(html, listName).matchAll(/\{\{\s*l\.(\w+)\s*\}\}/g)) assert.ok(key in sample, listName + " is missing " + key);
+    }
+    app.openOrderForm({ id: "T-KEYS", date: "2026-10-12", vendor: "Amazon", status: "ordered", terms: [], lines: [["p5k", 1, 0, "Amazon"]] });
+    const formSample = app.renderVals().ord.form.lines[0];
+    for (const [, key] of bodyOf(html, "ord.form.lines").matchAll(/\{\{\s*l\.(\w+)\s*\}\}/g)) assert.ok(key in formSample, "ord.form.lines is missing " + key);
+    for (const [, key] of html.matchAll(/\{\{\s*ord\.detail\.(\w+)\s*\}\}/g)) assert.ok(key in orderView.detail, "ord.detail." + key + " is missing");
+    app.orderDraft = null;
   } finally {
     delete globalThis.window;
   }

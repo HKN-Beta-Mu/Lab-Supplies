@@ -190,6 +190,7 @@
       orderDataVersion: source.orderDataVersion || null,
       supplierReferenceDataVersion: source.supplierReferenceDataVersion || null,
       cartImportVersion: source.cartImportVersion || null,
+      cartImportApplied: Array.isArray(source.cartImportApplied) ? source.cartImportApplied : [],
       dataSchemaVersion: source.dataSchemaVersion || null,
       state: {
         overrides: state.overrides || {},

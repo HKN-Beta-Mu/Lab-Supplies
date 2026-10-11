@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-  <meta name="labkit-build" content="2026.10.11.1">
+  <meta name="labkit-build" content="2026.10.11.2">
 <title>LabKit · Component Procurement</title>
 <link rel="stylesheet" href="./src/auth.css">
 <script type="module" src="./src/firebase.js"></script>
@@ -66,7 +66,7 @@
 
 <aside id="labkit-auth-session" class="labkit-auth-session" aria-label="Signed-in account" hidden>
   <span id="labkit-session-user"></span>
-  <span class="labkit-build-id">v2026.10.11.1</span>
+  <span class="labkit-build-id">v2026.10.11.2</span>
   <button id="labkit-session-sign-out" type="button">Sign out</button>
 </aside>
 
@@ -1047,7 +1047,7 @@
           <div style="margin-top:12px"><div style="font-size:11px;color:var(--color-neutral-700);margin-bottom:5px">Planning semesters covered</div><div style="display:flex;gap:6px;flex-wrap:wrap"><template data-dc-control="for" list="{{ ord.form.terms }}" as="t" hint-placeholder-count="4"><button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button></template></div></div>
           <div class="field" style="margin-top:12px"><label>Receipt URL (Google Drive, Dropbox, or other stored file)</label><input class="input" type="url" placeholder="https://drive.google.com/…" value="{{ ord.form.receiptUrl }}" onInput="{{ ord.form.onReceipt }}"></div>
           <div class="field" style="margin-top:10px"><label>Order notes / confirmation details</label><textarea class="input" rows="2" value="{{ ord.form.notes }}" onInput="{{ ord.form.onNotes }}"></textarea></div>
-          <table class="table" style="margin-top:12px"><thead><tr><th>Part to buy</th><th>Vendor for this line</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit paid</th><th></th></tr></thead><tbody><template data-dc-control="for" list="{{ ord.form.lines }}" as="l" hint-placeholder-count="5"><tr><td><b>{{ l.name }}</b><div style="font-size:10px;color:var(--color-accent-700)">{{ l.requirement }}</div><a href="{{ l.url }}" target="_blank" rel="noopener noreferrer" style="{{ l.linkStyle }}">Buy / verify listing ↗</a></td><td style="min-width:170px"><input class="input" placeholder="Vendor" value="{{ l.vendor }}" onInput="{{ l.onVendor }}"></td><td style="text-align:right">{{ l.qty }}</td><td style="text-align:right">{{ l.unit }}</td><td style="text-align:right"><button class="btn btn-ghost" onClick="{{ l.remove }}">Remove</button></td></tr></template></tbody></table>
+          <table class="table" style="margin-top:12px"><thead><tr><th>Part to buy</th><th>Vendor for this line</th><th style="text-align:right">Qty ordered</th><th style="text-align:right">Units per pack</th><th style="text-align:right">Unit paid</th><th></th></tr></thead><tbody><template data-dc-control="for" list="{{ ord.form.lines }}" as="l" hint-placeholder-count="5"><tr><td><b>{{ l.name }}</b><div style="font-size:10px;color:var(--color-accent-700)">{{ l.requirement }}</div><a href="{{ l.url }}" target="_blank" rel="noopener noreferrer" style="{{ l.linkStyle }}">Buy / verify listing ↗</a></td><td style="min-width:170px"><input class="input" placeholder="Vendor" value="{{ l.vendor }}" onInput="{{ l.onVendor }}"></td><td style="text-align:right">{{ l.qty }}<div style="font-size:10px;color:var(--color-neutral-600)">{{ l.addsLabel }}</div></td><td style="text-align:right"><input class="input" type="number" min="1" title="How many individual pieces come in each ordered unit (for example 50 for a pack of 50)" value="{{ l.pack }}" onInput="{{ l.onPack }}" style="width:88px;text-align:right"></td><td style="text-align:right">{{ l.unit }}</td><td style="text-align:right"><button class="btn btn-ghost" onClick="{{ l.remove }}">Remove</button></td></tr></template></tbody></table>
           <div style="display:grid;grid-template-columns:1fr 110px 120px auto;gap:8px;align-items:end;margin-top:10px"><div class="field"><label>Add component</label><button type="button" class="input" onClick="{{ ord.form.openPicker }}" title="Search the component list, or add a new component" style="text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ord.form.linePartLabel }}</span><span style="color:var(--color-accent-700);font-weight:700;flex:none">Find / add ▾</span></button></div><div class="field"><label>Qty</label><input class="input" type="number" min="1" value="{{ ord.form.lineQty }}" onInput="{{ ord.form.onLineQty }}"></div><div class="field"><label>Unit price</label><input class="input" type="number" min="0" step="0.0001" value="{{ ord.form.lineUnit }}" onInput="{{ ord.form.onLineUnit }}"></div><button class="btn btn-secondary" onClick="{{ ord.form.addLine }}">Add line</button></div>
           <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn btn-primary" onClick="{{ ord.form.save }}">Save order</button></div>
         </div>
@@ -1079,11 +1079,12 @@
             <h4 style="margin:0">{{ ord.detail.id }} · line items</h4>
             <span style="font-size:12px;color:var(--color-neutral-600)">{{ ord.detail.meta }}</span>
           </div>
+          <div style="{{ ord.detail.receiveAllStyle }}"><div style="flex:1;min-width:240px;font-size:12px;color:var(--color-neutral-700)">{{ ord.detail.inventoryNote }}</div><button class="btn btn-primary" onClick="{{ ord.detail.receiveAll }}">Add everything to inventory</button><button class="btn btn-secondary" onClick="{{ ord.detail.markCounted }}">Already counted</button></div>
           <table class="table">
-            <thead><tr><th>Component</th><th>Vendor</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit paid</th><th style="text-align:right">Extended</th></tr></thead>
+            <thead><tr><th>Component</th><th>Vendor</th><th style="text-align:right">Qty ordered</th><th style="text-align:right">In inventory</th><th style="text-align:right">Unit paid</th><th style="text-align:right">Extended</th><th style="text-align:right">Add to inventory</th></tr></thead>
             <tbody>
               <template data-dc-control="for" list="{{ ord.detail.lines }}" as="l" hint-placeholder-count="4">
-                <tr onClick="{{ l.open }}" style="cursor:pointer"><td style="font-weight:600">{{ l.name }}<div style="font-size:10px;color:var(--color-accent-700)">{{ l.requirement }}</div><a href="{{ l.url }}" target="_blank" rel="noopener noreferrer" style="{{ l.linkStyle }}" onClick="{{ l.stop }}">Buy / verify listing ↗</a></td><td>{{ l.vendor }}</td><td style="text-align:right">{{ l.qty }}</td><td style="text-align:right">{{ l.unit }}</td><td style="text-align:right;font-weight:600">{{ l.ext }}</td></tr>
+                <tr onClick="{{ l.open }}" style="cursor:pointer"><td style="font-weight:600">{{ l.name }}<div style="font-size:10px;color:var(--color-accent-700)">{{ l.requirement }}</div><a href="{{ l.url }}" target="_blank" rel="noopener noreferrer" style="{{ l.linkStyle }}" onClick="{{ l.stop }}">Buy / verify listing ↗</a></td><td>{{ l.vendor }}</td><td style="text-align:right">{{ l.qty }}</td><td style="text-align:right">{{ l.inInventory }}<div style="font-size:10px;color:var(--color-neutral-600)">{{ l.inInventoryNote }}</div></td><td style="text-align:right">{{ l.unit }}<div onClick="{{ l.stop }}"><button class="btn btn-ghost" onClick="{{ l.fillPrice }}" style="{{ l.fillStyle }}">Fill from listing</button></div></td><td style="text-align:right;font-weight:600">{{ l.ext }}</td><td onClick="{{ l.stop }}" style="text-align:right"><div style="{{ l.receiveStyle }}"><input class="input" type="number" min="0" aria-label="Quantity to add to inventory" value="{{ l.receiveValue }}" onInput="{{ l.onReceiveQty }}" style="width:76px;text-align:right"><span style="font-size:11px;color:var(--color-neutral-600)">{{ l.receiveUnit }}</span><button class="btn btn-primary" onClick="{{ l.receive }}" style="font-size:11px;padding:3px 8px">Add</button></div></td></tr>
               </template>
             </tbody>
           </table>
@@ -1385,7 +1386,7 @@ class Component extends DCLogic {
       searchQuery:'', builderKitId:'ece2031', enroll:3700, pct:44, overrides:{}, toast:null,
       scope:'global', gview:'home', statusOv:{},
       metric:'kits_by_course', transform:'Raw', seasonFilter:'All', hidden:{},
-      combine:{fa26:true}, vendorPolicy:'best', lineVendor:{}, lineSubstitute:{}, lineProgress:{}, priceChecks:{}, semesterVendor:{}, combineNotes:{}, procurementCategory:'All', procurementKit:'All', procurementProgress:'All', combineCategory:'All', combineKit:'All',
+      combine:{fa26:true}, vendorPolicy:'best', lineVendor:{}, lineSubstitute:{}, lineProgress:{}, priceChecks:{}, receiveDraft:{}, semesterVendor:{}, combineNotes:{}, procurementCategory:'All', procurementKit:'All', procurementProgress:'All', combineCategory:'All', combineKit:'All',
       catQuery:'', catCat:'All', picker:null,
       orderOpen:null, trendsTable:false,
       sidebarOpen:false,
@@ -1493,6 +1494,7 @@ class Component extends DCLogic {
       }
     }
     this.cartImportVersion=saved.cartImportVersion||null;
+    this.cartImportApplied=Array.isArray(saved.cartImportApplied)?saved.cartImportApplied.slice():(saved.cartImportVersion?[saved.cartImportVersion]:[]);
     this.migratePlanningModels();
     this.applyCartImport();
   }
@@ -1521,12 +1523,13 @@ class Component extends DCLogic {
   persistData(){
     if(!window.LabKitDataSource)return;
     if(window.LabKitDataSource.kind==='apps-script'&&!this._dataHydrated)return;
-    const {toast,partId,modalTab,sidebarOpen,orderOpen,semesterForm,semesterSuggestion,semesterSuggesting,semesterError,quoteLoading,quoteMessage,historyPanel,picker,priceChecks,kitForm,supplierFormOpen,supplierEditingId,supplierDraft,supplierAiBusy,supplierAiMessage,flagDraft,specDraftKey,specDraftValue,aiBusy,aiMessage,aiDescriptionDraft,aiReplacementResults,forecastAiBusy,forecastAiMessage,priceTestOpen,priceTestValues,...stableState}=this.state;
+    const {toast,partId,modalTab,sidebarOpen,orderOpen,semesterForm,semesterSuggestion,semesterSuggesting,semesterError,quoteLoading,quoteMessage,historyPanel,picker,priceChecks,receiveDraft,kitForm,supplierFormOpen,supplierEditingId,supplierDraft,supplierAiBusy,supplierAiMessage,flagDraft,specDraftKey,specDraftValue,aiBusy,aiMessage,aiDescriptionDraft,aiReplacementResults,forecastAiBusy,forecastAiMessage,priceTestOpen,priceTestValues,...stableState}=this.state;
     window.LabKitDataSource.save({
       historicalDataVersion:this.historicalDataVersion,
       orderDataVersion:'real-orders-v1',
       supplierReferenceDataVersion:this.supplierReferenceDataVersion,
       cartImportVersion:this.cartImportVersion||null,
+      cartImportApplied:this.cartImportApplied||[],
       dataSchemaVersion:'2026-10-06-v5',
       state:stableState,
       catalog:this.catalog,
@@ -1834,6 +1837,7 @@ class Component extends DCLogic {
     if(c.entity==='alternative-model'){this.catalog=this.clone(c.before.catalog);this._alts=this.clone(c.before.alternatives);this.inventory=this.clone(c.before.inventory);this.supplierQuotes=this.clone(c.before.supplierQuotes);this.map={};this.catalog.forEach(p=>this.map[p.id]=p);}
     if(c.entity==='supplier-quotes')this.supplierQuotes=this.clone(c.before);
     if(c.entity==='vendor-choice')this.state.lineVendor=this.clone(c.before);
+    if(c.entity==='receive'){this.orders=this.clone(c.before.orders);this.inventory=this.clone(c.before.inventory);Object.entries(this.inventory.components||{}).forEach(([id,row])=>{if(this.map[id])this.map[id].stock=Math.max(0,Number(row.onHand)||0);});}
     if(c.entity==='component-model'){this.catalog=this.clone(c.before.catalog);this.inventory=this.clone(c.before.inventory);this.supplierQuotes=this.clone(c.before.supplierQuotes);this.map={};this.catalog.forEach(p=>this.map[p.id]=p);}
     if(c.entity==='line-progress')this.state.lineProgress=this.clone(c.before);
     if(c.entity==='semester-vendor')this.state.semesterVendor=this.clone(c.before);
@@ -1930,10 +1934,56 @@ class Component extends DCLogic {
   }
   toggleTermKitOffering(termId,kitId){const term=this.termMap[termId],kit=this.kitMap[kitId];if(!term||!kit||!this.confirmTermEdit(term,'change whether '+kit.code+' is offered'))return;const before=this.clone(term);term.kitOfferings=term.kitOfferings||{};term.kitOfferings[kitId]=!this.isKitOffered(termId,kitId);if(!term.kitOfferings[kitId]){if(term.plannedKits)term.plannedKits[kitId]=0;if(kit.seriesKey&&term.items)term.items[kit.seriesKey]=0;else if(term.kits)term.kits[kit.code]=0;}term.sales=this.kits.reduce((sum,k)=>sum+this.rawKitSales(k,termId),0);if(term.actualPending===true&&term.inventoryApplied)term.inventoryAllocation=this.buildInventoryAllocation(term.plannedKits||{},true,term.kitOfferings);this.recordChange('edit','term',termId,before,term,(term.kitOfferings[kitId]?'Enabled ':'Marked not offered: ')+kit.code+' in '+term.label);this.forceUpdate();}
   kitUnitCost(kit,termId){return this.kitItemsForTerm(kit,termId).reduce((sum,it)=>sum+(Number(it.q)||0)*this.best(it.p,Math.max(1,Number(it.q)||1)).unit,0);}
+  orderLinePack(l){const key=String(l[0]||''),bag=key.startsWith('bag:')?this.bagMap[key.slice(4)]:null;return Math.max(1,Math.floor(Number(l[6])||(bag&&Number(bag.packQuantity))||1));}
+  orderLineStocked(l){return Math.max(0,Number(l[7])||0);}
+  orderLineKnown(l){const key=String(l[0]||'');return key.startsWith('bag:')?Boolean(this.bagMap[key.slice(4)]):Boolean(this.map[key]);}
+  // Adds what was actually bought to on-hand inventory: ordered units x units per pack, only the part not already counted (stocked), as one undoable change.
+  receiveOrder(orderId,amounts){
+    const order=this.orders.find(o=>o.id===orderId);if(!order)return false;
+    if(order.status==='cancelled'){this.flash(orderId+' is cancelled');return false;}
+    const before={orders:this.clone(this.orders),inventory:this.clone(this.inventory)},added=[];
+    order.lines.forEach((l,i)=>{
+      if(!this.orderLineKnown(l))return;
+      const remaining=Math.max(0,Number(l[1])-this.orderLineStocked(l)),asked=amounts?Math.floor(Number(amounts[i])||0):remaining,take=Math.min(remaining,Math.max(0,asked));if(take<=0)return;
+      const key=String(l[0]),isBag=key.startsWith('bag:'),id=isBag?key.slice(4):key,units=take*this.orderLinePack(l),row=this.inventoryRow(isBag?'bag':'component',id);
+      row.onHand=Math.max(0,Number(row.onHand)||0)+units;if(!isBag)this.map[id].stock=row.onHand;
+      while(l.length<7)l.push('');l[7]=this.orderLineStocked(l)+take;
+      added.push((isBag?(this.bagMap[id]||{}).name:this.map[id].name)+' +'+this.num(units));
+    });
+    if(!added.length){this.flash('Nothing left to add to inventory for '+orderId);return false;}
+    if(order.lines.filter(l=>this.orderLineKnown(l)).every(l=>this.orderLineStocked(l)>=Number(l[1]))&&order.status!=='received')order.status='received';
+    this.recordChange('edit','receive',orderId,before,{orders:this.orders,inventory:this.inventory},'Received into inventory from '+orderId+': '+added.join(', '));
+    this.forceUpdate();this.flash('Added to inventory: '+added.join(', '));return true;
+  }
+  // For orders whose parts are already in the on-hand counts: mark every line counted without changing inventory, so it is never added twice.
+  markOrderCounted(orderId){
+    const order=this.orders.find(o=>o.id===orderId);if(!order)return false;
+    const before={orders:this.clone(this.orders),inventory:this.clone(this.inventory)};let changed=false;
+    order.lines.forEach(l=>{if(!this.orderLineKnown(l))return;const need=Number(l[1]);if(this.orderLineStocked(l)<need){while(l.length<7)l.push('');l[7]=need;changed=true;}});
+    if(!changed)return false;
+    this.recordChange('edit','receive',orderId,before,{orders:this.orders,inventory:this.inventory},'Marked '+orderId+' as already counted in inventory');this.forceUpdate();return true;
+  }
+  // Fills an unpriced order line from the saved listing for that vendor. That is the listing's price now, not necessarily what was paid.
+  fillOrderLinePrice(orderId,index){
+    const order=this.orders.find(o=>o.id===orderId),line=order&&order.lines[index];if(!line||!this.map[line[0]])return false;
+    const vendor=String(line[3]||order.vendor||'').toLowerCase(),pack=this.orderLinePack(line),quote=(this.supplierQuotes[line[0]]||[]).find(q=>q.manual===true&&String(q.vendor).toLowerCase()===vendor&&((q.priceBreaks||[]).length||q.unitPrice!=null));
+    if(!quote){this.flash('No priced '+(line[3]||order.vendor)+' listing yet. Run Check price on that listing first.');return false;}
+    const perPiece=this.priceListing(quote,Math.max(1,Number(line[1])*pack)).unit;if(!Number.isFinite(perPiece)){this.flash('That listing has no usable price.');return false;}
+    const before=this.clone(this.orders);line[2]=Math.round(perPiece*pack*1e6)/1e6;
+    this.recordChange('edit','orders',orderId,before,this.orders,'Filled the unit price for '+this.map[line[0]].name+' on '+orderId+' from the saved '+quote.vendor+' listing');
+    this.forceUpdate();this.flash('Unit price set to '+this.m(line[2])+(pack>1?' per pack':'')+' from the current listing. Edit it if you paid something different.');return true;
+  }
+  // Each import batch in src/cart-import.js is applied once and remembered (cartImportApplied, saved with the shared snapshot), so a listing,
+  // order or item an officer later deletes is never brought back by a newer batch.
+  applyCartImport(){
+    const batches=window.LabKitImportBatches||(window.LabKitCartImport?[window.LabKitCartImport]:[]);if(!batches.length)return;
+    const done=new Set(this.cartImportApplied||[]);
+    batches.filter(batch=>!done.has(batch.version)).forEach(batch=>{this.applyImportBatch(batch);done.add(batch.version);});
+    this.cartImportApplied=[...done];this.cartImportVersion=batches[batches.length-1].version;
+  }
   // One-time import of the purchase carts in src/cart-import.js: components that are not yet in the catalog, approved-alternative parts, the individual
   // items, and a vendor listing for every cart line (SKU, price at the cart quantity, stock). Versioned in the shared snapshot, so later edits are kept.
-  applyCartImport(){
-    const data=window.LabKitCartImport;if(!data||this.cartImportVersion===data.version)return;
+  applyImportBatch(data){
     const slug=v=>String(v).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''),keyOf=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
     (data.parts||[]).forEach(p=>{
       if(this.map[p.id]||this.findComponentMatches({name:p.name}).some(m=>m.level==='exact'))return;
@@ -1967,7 +2017,11 @@ class Component extends DCLogic {
       this.supplierQuotes[componentId]=[...list.filter(q=>q!==seeded),quote];
     });
     (data.kits||[]).forEach(k=>{if(!this.kitMap[k.id]&&this.map[k.item])this.createKit({id:k.id,code:k.code,name:k.name,individual:true,items:[{p:k.item,q:1}],source:'Imported from the '+data.cartDate+' purchase list',record:false});});
-    this.cartImportVersion=data.version;
+    (data.packs||[]).forEach(pk=>{
+      const q=(this.supplierQuotes[pk.component]||[]).find(x=>x.vendor===pk.vendor&&keyOf(x.vendorSku)===keyOf(pk.sku));
+      if(q&&q.packSize===undefined){q.packSize=pk.packSize;q.minimumOrderQuantity=pk.packSize;q.orderMultiple=pk.packSize;}
+    });
+    (data.orders||[]).forEach(o=>{if(!this.orders.some(x=>x.id===o.id))this.orders.unshift({...this.clone(o),receipt:false});});
   }
   // Creates a kit (or general item) with its first version, lineup entry, inventory record and planning-semester offering. addKit and the cart import both use it.
   createKit({id,code,name,individual=false,items=[],source='Officer-created kit',record=true}){
@@ -2141,7 +2195,7 @@ class Component extends DCLogic {
       ticks:[0,0.5,1].map(t=>({y:(h-pb-t*(h-pt-pb)).toFixed(1),label:this.num(Math.round(mx*t))}))};
   }
   seasonColor(s){ return s==='Spring'?'var(--color-neutral-500)':s==='Summer'?'var(--color-neutral-700)':'var(--color-accent)'; }
-  partOrders(id){ if(!this._terms) this.buildHistory(); const out=[]; this.orders.forEach(o=>{ o.lines.filter(l=>l[0]===id||l[4]===id).forEach(ln=>out.push({order:o,qty:ln[1],unit:ln[2],vendor:ln[3]||o.vendor,boughtComponentId:ln[0],requirementComponentId:ln[4]||ln[0]})); }); return out; }
+  partOrders(id){ if(!this._terms) this.buildHistory(); const out=[]; this.orders.forEach(o=>{ o.lines.filter(l=>l[0]===id||l[4]===id).forEach(ln=>out.push({order:o,qty:ln[1],unit:ln[2],pack:this.orderLinePack(ln),vendor:ln[3]||o.vendor,boughtComponentId:ln[0],requirementComponentId:ln[4]||ln[0]})); }); return out; }
 
   unitAt(base,mult,qty){ const f=qty>=1000?0.55:qty>=500?0.63:qty>=100?0.72:qty>=10?0.85:1; return Math.max(0.008,base*mult*f); }
   // Price one saved listing for an order of `qty` pieces: MOQ and order multiples, the price tier reached, and known shipping.
@@ -2247,9 +2301,10 @@ class Component extends DCLogic {
     if(!preferred&&fastest.vendor!==first.vendor&&fastest.lead<999)decision+=' '+fastest.vendor+' is faster ('+fastest.leadLabel+') if timing matters.';
     return{vendor:first.vendor,selected:first,allocations,total,remaining,decision,split:allocations.length>1};
   }
+  // Recorded paid price per piece. Unpriced lines (unit 0) are skipped and a pack price is divided by its pack size.
   paid(id,termId){
-    const po=this.partOrders(id).find(x=>x.order.terms.includes(termId));
-    return po?{unit:po.unit,vendor:po.vendor||po.order.vendor,order:po.order.id,receipt:Boolean(po.order.receiptUrl||po.order.receipt)}:null;
+    const po=this.partOrders(id).find(x=>x.order.terms.includes(termId)&&Number(x.unit)>0);
+    return po?{unit:po.unit/po.pack,vendor:po.vendor||po.order.vendor,order:po.order.id,receipt:Boolean(po.order.receiptUrl||po.order.receipt)}:null;
   }
 
   history(id){ const p=this.map[id],h=this.hash(id); const out=[]; for(let y=2016;y<=2026;y++){ const t=(y-2016)/10; const noise=((this.hash(id+y)%20)-10)/100; const price=this.unitAt(p.base,1.0,100)*(0.74+0.30*t)*(1+noise); out.push({year:y,price:Math.max(0.004,price)}); } return out; }
@@ -2629,13 +2684,15 @@ class Component extends DCLogic {
       try{
         const result=await source.scrapeListingPage({url,snapshotId:prior.status==='pending'?prior.snapshotId:undefined,categories:[...new Set(this.catalog.map(p=>p.cat))]});
         if(result.status==='pending'){this.setPriceCheck(quoteId,{status:'pending',snapshotId:result.snapshotId,message:result.message});return;}
-        const api=result.candidate;
-        if(!api||!(api.priceBreaks||[]).length){this.setPriceCheck(quoteId,{status:result.status==='empty'?'notfound':'noprice',message:result.message||'No price was found on the page.'});return;}
+        const candidate=result.candidate;
+        if(!candidate||!(candidate.priceBreaks||[]).length){this.setPriceCheck(quoteId,{status:result.status==='empty'?'notfound':'noprice',message:result.message||'No price was found on the page.'});return;}
+        // A pack listing is sold in packs but priced per piece here: the page's pack price is divided by the pack size.
+        const pack=Math.max(1,Number(quote.packSize)||1),api=pack>1?{...candidate,priceBreaks:candidate.priceBreaks.map(b=>({quantity:b.quantity*pack,unitPrice:b.unitPrice/pack})),minimumOrderQuantity:pack,orderMultiple:pack}:candidate;
         const source2=key+' page (Bright Data)';
         if(this.sameTiers(quote.priceBreaks,api.priceBreaks)){
           this.patchQuote(componentId,quoteId,{priceCheckedAt:new Date().toISOString(),priceCheckSource:source2,priceSource:result.method==='fields'?'':quote.priceSource},'Checked '+quote.vendor+' prices for '+(this.map[componentId]||{}).name+' against the page');
           this.setPriceCheck(quoteId,{status:'match',message:'Matches the '+key+' page ('+api.priceBreaks.length+' tier'+(api.priceBreaks.length===1?'':'s')+(result.method==='gemini'?', interpreted by Gemini — still confirm it yourself':'')+') · checked '+today,api,method:result.method});
-        }else this.setPriceCheck(quoteId,{status:'differs',message:'The '+key+' page shows '+this.tiersText(api.priceBreaks)+' · saved: '+(this.tiersText(quote.priceBreaks)||'no tiers')+(api.priceBreaks.length<(quote.priceBreaks||[]).length?' (the page shows fewer tiers than you saved; applying would drop them)':''),api,method:result.method});
+        }else this.setPriceCheck(quoteId,{status:'differs',message:'The '+key+' page shows '+this.tiersText(api.priceBreaks)+(pack>1?' (page price per pack ÷ '+pack+')':'')+' · saved: '+(this.tiersText(quote.priceBreaks)||'no tiers')+(api.priceBreaks.length<(quote.priceBreaks||[]).length?' (the page shows fewer tiers than you saved; applying would drop them)':''),api,method:result.method});
       }catch(error){this.setPriceCheck(quoteId,{status:'error',message:error&&error.code==='UNKNOWN_ACTION'?'The backend needs to be redeployed with the page-check update.':error&&error.message||'Page check failed.'});}
       return;
     }
@@ -3299,12 +3356,21 @@ class Component extends DCLogic {
       stock:this.kits.map(k=>{const r=this.kitInventory(k.id);return{code:k.code,name:k.name,status:k.active===false?'Decommissioned':'Active',prepared:this.num(r.prepared),sold:this.num(r.sold),faulty:this.num(r.faulty),reserved:this.num(r.reserved),available:this.num(r.available)};}),
       semesters:this.terms.map(t=>{let revenue=0,cost=0,complete=true;this.kits.forEach(k=>{if(!this.isKitOffered(t.id,k.id))return;const price=this.kitSalePrice(k,t.id),units=this.rawKitSales(k,t.id);if(price===null)complete=false;else revenue+=price*units;cost+=this.kitUnitCost(k,t.id)*units;});return{term:t.label,status:this.status(t.id),classSize:this.num(Object.values(t.cls||{}).reduce((a,b)=>a+(Number(b)||0),0)),units:this.num(this.kits.reduce((a,k)=>a+this.rawKitSales(k,t.id),0)),revenue:complete?this.m(revenue):'—',profit:complete?this.m(revenue-cost):'—',edit:()=>this.setState({scope:'semester',semesterId:t.id,view:'kits',kitId:null})};}),
       add:()=>this.openOrderForm(),
-      form:{style:S.orderForm?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);padding:16px;background:var(--color-surface);margin-bottom:18px':'display:none',id:od.id,date:od.date,vendor:od.vendor,status:od.status,receiptUrl:od.receiptUrl||'',trackingNumber:od.trackingNumber||'',trackingUrl:od.trackingUrl||'',carrier:od.carrier||'',notes:od.notes||'',close:()=>{this.orderDraft=null;this.setState({orderForm:false});},onId:e=>{od.id=e.target.value;this.forceUpdate();},onDate:e=>{od.date=e.target.value;this.forceUpdate();},onVendor:e=>{od.vendor=e.target.value;this.forceUpdate();},onStatus:e=>{od.status=e.target.value;this.forceUpdate();},onReceipt:e=>{od.receiptUrl=e.target.value;this.forceUpdate();},onCarrier:e=>{od.carrier=e.target.value;this.forceUpdate();},onTrackingNumber:e=>{od.trackingNumber=e.target.value;this.forceUpdate();},onTrackingUrl:e=>{od.trackingUrl=e.target.value;this.forceUpdate();},onNotes:e=>{od.notes=e.target.value;this.forceUpdate();},terms:this.terms.filter(t=>this.status(t.id)==='Planning').map(t=>({label:t.label,go:()=>{const i=od.terms.indexOf(t.id);if(i>=0)od.terms.splice(i,1);else od.terms.push(t.id);this.forceUpdate();},style:`border:1px solid ${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-divider)'};background:${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-surface)'};color:${od.terms.includes(t.id)?'var(--color-bg)':'var(--color-text)'};font-size:11px;padding:5px 8px;cursor:pointer`})),lines:od.lines.map((l,i)=>({name:this.orderItemName(l[0]),requirement:this.orderLineRequirement(l),vendor:l[3]||od.vendor||'',qty:this.num(l[1]),unit:this.mu(l[2]),url:l[5]||'#',linkStyle:l[5]?'font-size:10px;font-weight:700;color:var(--color-accent-700)':'display:none',onVendor:e=>{l[3]=e.target.value;this.forceUpdate();},remove:()=>{od.lines.splice(i,1);this.forceUpdate();}})),linePartLabel:this.orderItemName(S.orderLinePart)||'Choose a component…',openPicker:()=>this.openPicker('order'),linePart:S.orderLinePart,lineQty:S.orderLineQty,lineUnit:S.orderLineUnit,onLinePart:e=>this.setState({orderLinePart:e.target.value}),onLineQty:e=>this.setState({orderLineQty:e.target.value}),onLineUnit:e=>this.setState({orderLineUnit:e.target.value}),addLine:()=>this.addOrderDraftLine(),save:()=>this.saveOrder()},
-      rows:this.orders.map(o=>({id:o.id,date:o.date,vendor:o.vendor,status:o.status||(o.receipt?'received':'ordered'),terms:o.terms.map(t=>(this.termMap[t]||{}).label||t),trackingUrl:o.trackingUrl||'#',trackingLabel:o.trackingNumber?((o.carrier?o.carrier+' · ':'')+o.trackingNumber):'Not entered',trackingStyle:o.trackingUrl?'font-size:11.5px;font-weight:700;color:var(--color-accent-700)':'font-size:11.5px;color:var(--color-neutral-600);pointer-events:none',lines:o.lines.length,total:this.m(ordTotal(o)),receiptUrl:o.receiptUrl||'#',rcpt:o.receiptUrl||o.receipt?'Filed':'Missing',rcptClass:o.receiptUrl||o.receipt?'tag-neutral':'tag-accent',stop:e=>{if(!o.receiptUrl)e.preventDefault();e.stopPropagation();},stopTracking:e=>{if(!o.trackingUrl)e.preventDefault();e.stopPropagation();},toggle:()=>this.setState({orderOpen:S.orderOpen===o.id?null:o.id})})),
+      form:{style:S.orderForm?'border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);padding:16px;background:var(--color-surface);margin-bottom:18px':'display:none',id:od.id,date:od.date,vendor:od.vendor,status:od.status,receiptUrl:od.receiptUrl||'',trackingNumber:od.trackingNumber||'',trackingUrl:od.trackingUrl||'',carrier:od.carrier||'',notes:od.notes||'',close:()=>{this.orderDraft=null;this.setState({orderForm:false});},onId:e=>{od.id=e.target.value;this.forceUpdate();},onDate:e=>{od.date=e.target.value;this.forceUpdate();},onVendor:e=>{od.vendor=e.target.value;this.forceUpdate();},onStatus:e=>{od.status=e.target.value;this.forceUpdate();},onReceipt:e=>{od.receiptUrl=e.target.value;this.forceUpdate();},onCarrier:e=>{od.carrier=e.target.value;this.forceUpdate();},onTrackingNumber:e=>{od.trackingNumber=e.target.value;this.forceUpdate();},onTrackingUrl:e=>{od.trackingUrl=e.target.value;this.forceUpdate();},onNotes:e=>{od.notes=e.target.value;this.forceUpdate();},terms:this.terms.filter(t=>this.status(t.id)==='Planning').map(t=>({label:t.label,go:()=>{const i=od.terms.indexOf(t.id);if(i>=0)od.terms.splice(i,1);else od.terms.push(t.id);this.forceUpdate();},style:`border:1px solid ${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-divider)'};background:${od.terms.includes(t.id)?'var(--color-accent)':'var(--color-surface)'};color:${od.terms.includes(t.id)?'var(--color-bg)':'var(--color-text)'};font-size:11px;padding:5px 8px;cursor:pointer`})),lines:od.lines.map((l,i)=>({name:this.orderItemName(l[0]),requirement:this.orderLineRequirement(l),vendor:l[3]||od.vendor||'',qty:this.num(l[1]),unit:Number(l[2])>0?this.mu(l[2]):'Unpriced',pack:this.orderLinePack(l),addsLabel:this.orderLineKnown(l)?'adds '+this.num(l[1]*this.orderLinePack(l))+' to inventory':'',onPack:e=>{while(l.length<7)l.push('');l[6]=Math.max(1,parseInt(e.target.value)||1);this.forceUpdate();},url:l[5]||'#',linkStyle:l[5]?'font-size:10px;font-weight:700;color:var(--color-accent-700)':'display:none',onVendor:e=>{l[3]=e.target.value;this.forceUpdate();},remove:()=>{od.lines.splice(i,1);this.forceUpdate();}})),linePartLabel:this.orderItemName(S.orderLinePart)||'Choose a component…',openPicker:()=>this.openPicker('order'),linePart:S.orderLinePart,lineQty:S.orderLineQty,lineUnit:S.orderLineUnit,onLinePart:e=>this.setState({orderLinePart:e.target.value}),onLineQty:e=>this.setState({orderLineQty:e.target.value}),onLineUnit:e=>this.setState({orderLineUnit:e.target.value}),addLine:()=>this.addOrderDraftLine(),save:()=>this.saveOrder()},
+      rows:this.orders.map(o=>({id:o.id,date:o.date,vendor:o.vendor,status:o.status||(o.receipt?'received':'ordered'),terms:o.terms.map(t=>(this.termMap[t]||{}).label||t),trackingUrl:o.trackingUrl||'#',trackingLabel:o.trackingNumber?((o.carrier?o.carrier+' · ':'')+o.trackingNumber):'Not entered',trackingStyle:o.trackingUrl?'font-size:11.5px;font-weight:700;color:var(--color-accent-700)':'font-size:11.5px;color:var(--color-neutral-600);pointer-events:none',lines:o.lines.length,total:this.m(ordTotal(o))+(o.lines.some(l=>!(Number(l[2])>0))?' + unpriced':''),receiptUrl:o.receiptUrl||'#',rcpt:o.receiptUrl||o.receipt?'Filed':'Missing',rcptClass:o.receiptUrl||o.receipt?'tag-neutral':'tag-accent',stop:e=>{if(!o.receiptUrl)e.preventDefault();e.stopPropagation();},stopTracking:e=>{if(!o.trackingUrl)e.preventDefault();e.stopPropagation();},toggle:()=>this.setState({orderOpen:S.orderOpen===o.id?null:o.id})})),
       detailStyle:S.orderOpen?'margin-top:24px':'display:none',
-      detail:(()=>{ const o=this.orders.find(x=>x.id===S.orderOpen); if(!o) return {id:'',meta:'',lines:[]};
-        return {id:o.id,meta:o.vendor+' · '+o.date+' · '+(o.status||'ordered')+' · covers '+o.terms.map(t=>(this.termMap[t]||{}).label).join(' + ')+' · '+(o.trackingNumber?('tracking '+o.trackingNumber):'tracking missing')+' · '+(o.receiptUrl||o.receipt?'receipt on file':'receipt missing')+(o.notes?' · '+o.notes:''),
-          lines:o.lines.map(l=>({name:this.orderItemName(l[0]),requirement:this.orderLineRequirement(l),vendor:l[3]||o.vendor||'—',qty:this.num(l[1]),unit:this.mu(l[2]),ext:this.m(l[1]*l[2]),url:l[5]||'#',linkStyle:l[5]?'font-size:10px;font-weight:700;color:var(--color-accent-700)':'display:none',stop:e=>e.stopPropagation(),open:()=>{if(this.map[l[0]])this.openPart(l[0]);}}))}; })()};
+      detail:(()=>{ const o=this.orders.find(x=>x.id===S.orderOpen),none={id:'',meta:'',lines:[],receiveAllStyle:'display:none',receiveAll:()=>{},markCountedStyle:'display:none',markCounted:()=>{},inventoryNote:''}; if(!o) return none;
+        const known=o.lines.filter(l=>this.orderLineKnown(l)),remainingLines=known.filter(l=>this.orderLineStocked(l)<Number(l[1])),open=o.status!=='cancelled'&&remainingLines.length>0;
+        return {id:o.id,meta:o.vendor+' · '+o.date+' · '+(o.status||'ordered')+' · covers '+(o.terms.length?o.terms.map(t=>(this.termMap[t]||{}).label).join(' + '):'no semester')+' · '+(o.trackingNumber?('tracking '+o.trackingNumber):'tracking missing')+' · '+(o.receiptUrl||o.receipt?'receipt on file':'receipt missing')+(o.notes?' · '+o.notes:''),
+          receiveAllStyle:open?'display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--color-divider);border-left:3px solid var(--color-accent);background:var(--color-surface);padding:10px 14px;margin-bottom:12px':'display:none',receiveAll:()=>this.receiveOrder(o.id),markCountedStyle:open?'':'display:none',markCounted:()=>this.markOrderCounted(o.id),
+          inventoryNote:open?'Add what actually arrived to on-hand inventory. Only use this for purchases that are not already in your counts; if they are, choose “Already counted”.':'',
+          lines:o.lines.map((l,i)=>{const pack=this.orderLinePack(l),stocked=this.orderLineStocked(l),remaining=Math.max(0,Number(l[1])-stocked),isKnown=this.orderLineKnown(l),priced=Number(l[2])>0,key=o.id+':'+i,draft=(S.receiveDraft||{})[key];
+            return{name:this.orderItemName(l[0]),requirement:this.orderLineRequirement(l),vendor:l[3]||o.vendor||'—',qty:this.num(l[1])+(pack>1?' × '+this.num(pack)+' = '+this.num(l[1]*pack)+' units':''),unit:priced?this.mu(l[2])+(pack>1?' / pack':''):'Unpriced',ext:priced?this.m(l[1]*l[2]):'—',
+              inInventory:isKnown?this.num(stocked*pack)+' of '+this.num(l[1]*pack):'—',inInventoryNote:isKnown?(stocked>=Number(l[1])?'All counted':stocked>0?'Part counted':'Not counted yet'):'Not a stocked item',
+              receiveStyle:isKnown&&remaining>0&&o.status!=='cancelled'?'display:flex;gap:6px;align-items:center;justify-content:flex-end':'display:none',receiveValue:draft===undefined?remaining:draft,onReceiveQty:e=>this.setState({receiveDraft:{...(this.state.receiveDraft||{}),[key]:e.target.value}}),receiveUnit:pack>1?'packs':'units',
+              receive:e=>{e.stopPropagation();this.receiveOrder(o.id,{[i]:Number(draft===undefined?remaining:draft)});this.setState({receiveDraft:{...(this.state.receiveDraft||{}),[key]:undefined}});},
+              fillStyle:isKnown&&!priced?'font-size:10.5px;padding:2px 6px;margin-top:4px':'display:none',fillPrice:e=>{e.stopPropagation();this.fillOrderLinePrice(o.id,i);},
+              url:l[5]||'#',linkStyle:l[5]?'font-size:10px;font-weight:700;color:var(--color-accent-700)':'display:none',stop:e=>e.stopPropagation(),open:()=>{if(this.map[l[0]])this.openPart(l[0]);}};})}; })()};
 
     const ghdrSub={home:'Everything across all 36 recorded semesters',inventory:'Current general items, packed kits, bags, and loose components',accuracy:'Predictions, demand trends, evidence, and data entry in one workspace',combine:'Plan a purchase across one or more semesters: cost, base price per kit, profit, and price trends',catalog:'Search components and maintain their vendor links, bulk pricing, stock, shipping, and lead time',library:'Reusable versioned kit definitions and sales history',build:'Create or update a reusable kit definition','kit-history':'Version assignments, selling prices, and sales history',orders:'Plan a purchase, then log orders, tracking, receipts, and paid prices',history:'Auditable changes with undo'};
     const ghdrTitle={home:'All semesters',inventory:'Current inventory',accuracy:'Forecast & trends',combine:'Ordering',catalog:'Component catalog',library:'Kit library',build:'Kit builder','kit-history':'Kit history',orders:'Ordering',history:'Edit history'};
