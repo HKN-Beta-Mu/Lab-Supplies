@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.11\.2"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.12\.1"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -1038,6 +1038,60 @@ test("the data model initializes and can create a persisted semester", async () 
       const hctBase = app.kitItemsForTerm(hctKit, "sp27").reduce((total, item) => total + item.q * perPiece(item.p, item.p === "hct20" ? 0.5 : 0.1), 0);
       assert.equal(app.renderVals().comb.econ.rows.find((row) => row.name === hctKit.name).base, app.m(hctBase));
     }
+    // Cost per kit: wire is charged per cut (not the whole spool), at the vendor the semester is using; the card shows all four figures.
+    app.orders = [];
+    priceKitParts(ece2031, 0.1);
+    const wireIdsInKit = ece2031Items.filter((item) => app.wireCalculation(item.p, 1)).map((item) => item.p);
+    assert.ok(wireIdsInKit.length >= 1);
+    wireIdsInKit.forEach((id) => { app.supplierQuotes[id] = [vendorListing("spool-" + id, "Spool Co", 6.8)]; });
+    const expectedCost = ece2031Items.reduce((total, item) => {
+      const wire = app.wireCalculation(item.p, 1);
+      return total + item.q * (wire ? 6.8 / wire.conservative : 0.1);
+    }, 0);
+    assert.ok(Math.abs(app.kitUnitCost(ece2031, "sp27") - expectedCost) < 1e-9, "cost per kit " + app.kitUnitCost(ece2031, "sp27") + " vs " + expectedCost);
+    assert.ok(app.kitUnitCost(ece2031, "sp27") < 5, "the full $6.80 spool is not charged to every kit");
+    app.versionFor("ece2031", "sp27").salePrice = 20;
+    app.setState({ scope: "semester", semesterId: "sp27", view: "kits" });
+    const kitCard = app.renderVals().kitsCards.find((card) => card.code === "ECE 2031");
+    const plannedSold = app.sales(ece2031).sold;
+    assert.equal(kitCard.unitPriceLabel, "$20.00");
+    assert.equal(kitCard.costPerUnit, app.m(expectedCost));
+    assert.equal(kitCard.profitPerUnit, app.m(20 - expectedCost));
+    assert.equal(kitCard.revenue, app.m(plannedSold * 20));
+    assert.equal(kitCard.profit, app.m(plannedSold * (20 - expectedCost)));
+    assert.ok(20 - expectedCost > 0, "a $20 kit that costs a few dollars is profitable");
+    app.setState({ view: "kit", kitId: "ece2031" });
+    const kitStats = app.renderVals().kit.stats;
+    const stat = (label) => kitStats.find((tile) => tile.label.startsWith(label));
+    assert.equal(stat("Unit price").val, "$20.00");
+    assert.equal(stat("Revenue").val, app.m(plannedSold * 20));
+    assert.equal(stat("Cost / unit").val, app.m(expectedCost));
+    assert.equal(stat("Profit / unit").val, app.m(20 - expectedCost));
+    assert.equal(kitStats.find((tile) => tile.label === "Profit").val, app.m(plannedSold * (20 - expectedCost)));
+    const wireLine = app.renderVals().kit.rows.find((row) => row.name === app.map[wireIdsInKit[0]].name);
+    assert.match(wireLine.unit, /\$6\.80 \/ spool/);
+    // "Vendor we're using": the plan's choice, not simply the cheapest listing.
+    app.supplierQuotes.r1k = [vendorListing("cheap-r", "Cheap Co", 0.05), vendorListing("pricey-r", "Pricey Co", 0.1)];
+    const r1kRow = () => app.renderVals().kit.rows.find((row) => row.name === app.map.r1k.name);
+    assert.equal(r1kRow().vendor, "Cheap Co");
+    assert.equal(r1kRow().vendorNote, "recommended");
+    app.setSemesterVendor("sp27", "Pricey Co");
+    assert.equal(r1kRow().vendor, "Pricey Co");
+    assert.equal(r1kRow().vendorNote, "semester vendor");
+    app.setVendorChoice("sp27:r1k", "Cheap Co");
+    assert.equal(r1kRow().vendor, "Cheap Co");
+    assert.equal(r1kRow().vendorNote, "pinned for this line");
+    app.setVendorChoice("sp27:r1k", "auto");
+    app.setSemesterVendor("sp27", "auto");
+    app.supplierQuotes.r1k = [];
+    assert.equal(r1kRow().vendor, "No vendor chosen", "no saved listing: say so instead of naming a vendor");
+    // A kit that loses money shows a negative profit with the minus sign in front.
+    assert.equal(app.m(-3758.81), "-$3,758.81");
+    assert.equal(app.mu(-0.05), "-$0.0500");
+    app.versionFor("ece2031", "sp27").salePrice = 1;
+    assert.match(app.renderVals().kit.stats.find((tile) => tile.label === "Profit").val, /^-\$/);
+    assert.match(app.renderVals().kit.stats.find((tile) => tile.label === "Profit").color, /danger/);
+
     // Restore everything the economics fixtures touched.
     app.orders = savedOrders;
     delete app.versionFor("ece2031", "sp27").salePrice;

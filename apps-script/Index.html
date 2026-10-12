@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-  <meta name="labkit-build" content="2026.10.11.2">
+  <meta name="labkit-build" content="2026.10.12.1">
 <title>LabKit · Component Procurement</title>
 <style id="labkit-bundled-styles">
 /* Modernist — design-system tokens and component classes. This file is the source of truth for the system's look; retune it here and see readme.md. */
@@ -5006,7 +5006,7 @@ setPersistence(auth, browserLocalPersistence)
 
 <aside id="labkit-auth-session" class="labkit-auth-session" aria-label="Signed-in account" hidden>
   <span id="labkit-session-user"></span>
-  <span class="labkit-build-id">v2026.10.11.2</span>
+  <span class="labkit-build-id">v2026.10.12.1</span>
   <button id="labkit-session-sign-out" type="button">Sign out</button>
 </aside>
 
@@ -5175,8 +5175,9 @@ setPersistence(auth, browserLocalPersistence)
               </div>
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--color-divider);padding-top:9px">
                 <button onClick="{{ k.toggleOffering }}" style="{{ k.offerStyle }}">{{ k.offerLabel }}</button>
-                <span style="font-size:11.5px;color:var(--color-neutral-600)">Revenue <b style="color:var(--color-text)">{{ k.revenue }}</b> · Profit <b style="color:var(--color-text)">{{ k.profit }}</b></span>
+                <span style="font-size:11.5px;color:var(--color-neutral-600)">Revenue <b style="color:var(--color-text)">{{ k.revenue }}</b> · Profit <b style="{{ k.profitStyle }}">{{ k.profit }}</b></span>
               </div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--color-neutral-600);margin-top:-4px">Unit price <b style="color:var(--color-text)">{{ k.unitPriceLabel }}</b><span>Cost / unit <b style="color:var(--color-text)">{{ k.costPerUnit }}</b></span><span>Profit / unit <b style="{{ k.profitStyle }}">{{ k.profitPerUnit }}</b></span></div>
               <button class="btn btn-ghost" onClick="{{ k.applySuggestion }}" style="{{ k.suggestionStyle }}">Use Gemini/history suggestion · {{ k.suggested }} units</button>
             </div>
           </template>
@@ -5195,7 +5196,7 @@ setPersistence(auth, browserLocalPersistence)
             <button class="btn btn-primary" onClick="{{ kit.kitToList }}">Add to shopping list</button>
           </div>
         </div>
-        <div class="summary-strip" style="display:flex;border:1px solid var(--color-divider);margin-bottom:20px">
+        <div class="summary-strip" style="display:flex;flex-wrap:wrap;border:1px solid var(--color-divider);margin-bottom:20px">
           <template data-dc-control="for" list="{{ kit.stats }}" as="st" hint-placeholder-count="5">
             <div style="flex:1;padding:12px 16px;border-right:1px solid var(--color-divider)">
               <div style="font-family:var(--font-heading);font-weight:800;font-size:21px;color:{{ st.color }}">{{ st.val }}</div>
@@ -5211,7 +5212,7 @@ setPersistence(auth, browserLocalPersistence)
         <table class="table">
           <thead><tr>
             <th style="width:34px" title="Checked and reviewed"><span style="position:absolute;left:-9999px">Reviewed</span></th><th>Component</th><th>Description</th><th>Kit requirement</th><th style="text-align:right">Qty / kit</th>
-            <th style="text-align:right">Total needed</th><th style="text-align:right">Paid unit</th><th style="text-align:right;color:var(--color-neutral-500)">Latest unit</th><th>Cheapest vendor</th>
+            <th style="text-align:right">Total needed</th><th style="text-align:right">Paid unit</th><th style="text-align:right;color:var(--color-neutral-500)">Latest unit</th><th>Vendor we’re using</th>
           </tr></thead>
           <tbody>
             <template data-dc-control="for" list="{{ kit.rows }}" as="r" hint-placeholder-count="8">
@@ -5224,7 +5225,7 @@ setPersistence(auth, browserLocalPersistence)
                 <td style="text-align:right;font-weight:600">{{ r.total }}</td>
                 <td style="text-align:right">{{ r.paid }}</td>
                 <td style="text-align:right;color:var(--color-neutral-500)">{{ r.unit }}</td>
-                <td>{{ r.vendor }}</td>
+                <td>{{ r.vendor }}<div style="{{ r.vendorNoteStyle }}">{{ r.vendorNote }}</div></td>
               </tr>
             </template>
           </tbody>
@@ -6503,8 +6504,8 @@ class Component extends DCLogic {
     window.removeEventListener('labkit:data-conflict',this.onDataConflict);
   }
 
-  m(n){ return '$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-  mu(n){ return n<1 ? '$'+n.toFixed(n<0.1?4:3) : this.m(n); }
+  m(n){ const v=Number(n); return (v<0?'-':'')+'$'+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  mu(n){ return Math.abs(n)<1 ? (n<0?'-':'')+'$'+Math.abs(n).toFixed(Math.abs(n)<0.1?4:3) : this.m(n); }
   num(n){ return Number(n).toLocaleString('en-US'); }
   hash(s){ let h=0; for(const c of String(s)) h=(h*31+c.charCodeAt(0))>>>0; return h; }
   flash(t){ this.setState({toast:t}); clearTimeout(this._t); this._t=setTimeout(()=>this.setState({toast:null}),2200); }
@@ -6870,7 +6871,27 @@ class Component extends DCLogic {
     this.updateTermCourseSize(termId,driver.keys[0],Math.max(0,total-other));
   }
   toggleTermKitOffering(termId,kitId){const term=this.termMap[termId],kit=this.kitMap[kitId];if(!term||!kit||!this.confirmTermEdit(term,'change whether '+kit.code+' is offered'))return;const before=this.clone(term);term.kitOfferings=term.kitOfferings||{};term.kitOfferings[kitId]=!this.isKitOffered(termId,kitId);if(!term.kitOfferings[kitId]){if(term.plannedKits)term.plannedKits[kitId]=0;if(kit.seriesKey&&term.items)term.items[kit.seriesKey]=0;else if(term.kits)term.kits[kit.code]=0;}term.sales=this.kits.reduce((sum,k)=>sum+this.rawKitSales(k,termId),0);if(term.actualPending===true&&term.inventoryApplied)term.inventoryAllocation=this.buildInventoryAllocation(term.plannedKits||{},true,term.kitOfferings);this.recordChange('edit','term',termId,before,term,(term.kitOfferings[kitId]?'Enabled ':'Marked not offered: ')+kit.code+' in '+term.label);this.forceUpdate();}
-  kitUnitCost(kit,termId){return this.kitItemsForTerm(kit,termId).reduce((sum,it)=>sum+(Number(it.q)||0)*this.best(it.p,Math.max(1,Number(it.q)||1)).unit,0);}
+  // What a semester will actually pay per piece for a part: the part really bought (the replacement if one is chosen), at the vendor or split the plan
+  // uses, before shipping and tax. Wire is bought by the spool but used by the cut, so its price is spread over the cuts a spool yields.
+  chosenSupply(part,termId,rawQty){
+    const buy=this.purchaseComponent(termId+':'+part.id,part.id)||part,units=Math.max(1,this.componentPurchaseQuantity(part.id,Math.max(1,Number(rawQty)||1))),key=termId+'|'+part.id+'|'+units;
+    if(this._supplyCache&&this._supplyCache[key])return this._supplyCache[key];
+    const wire=this.wireCalculation(part.id,1),planning=this.status(termId)==='Planning',choice=planning?this.vendorChoice(termId,part.id,buy.id):{vendor:'',source:''},plan=planning&&this.map[buy.id]?this.vendorPlan(buy.id,units,choice.vendor):null;
+    let unit=null,vendors=[],estimate=false;
+    if(plan&&plan.allocations.length){const qty=Math.max(1,plan.allocations.reduce((t,a)=>t+a.qty,0));unit=plan.allocations.reduce((t,a)=>t+a.qty*a.unit,0)/qty;vendors=plan.allocations.map(a=>a.vendor).filter((v,i,all)=>all.indexOf(v)===i);}
+    else if(this.map[buy.id]){const b=this.best(buy.id,units);unit=b&&Number.isFinite(b.unit)?b.unit:null;estimate=true;}
+    const result={buy,units,unit,piece:unit==null?null:(wire?unit/wire.conservative:unit),vendors,estimate,plan,choice,wire};
+    if(this._supplyCache)this._supplyCache[key]=result;
+    return result;
+  }
+  kitCostBreakdown(kit,termId){
+    const s=this.sales(kit,termId),purchaseUnits=Math.max(1,s.purchase||s.sold||1);let total=0,estimated=0,missing=0;
+    this.kitItemsForTerm(kit,termId).forEach(it=>{const part=this.map[it.p];if(!part){missing+=1;return;}const supply=this.chosenSupply(part,termId,(Number(it.q)||0)*purchaseUnits);if(supply.piece==null){missing+=1;return;}total+=(Number(it.q)||0)*supply.piece;if(supply.estimate)estimated+=1;});
+    const bag=kit.individual?null:this.bagMap[(this.versionFor(kit.id,termId)||{}).bagTypeId],bagUnit=bag&&bag.packPrice!=null?Math.max(0,Number(bag.packPrice)||0)/Math.max(1,Number(bag.packQuantity)||1):null;
+    if(bagUnit!=null)total+=bagUnit;
+    return{total,estimated,missing,bagUnit};
+  }
+  kitUnitCost(kit,termId){return this.kitCostBreakdown(kit,termId).total;}
   orderLinePack(l){const key=String(l[0]||''),bag=key.startsWith('bag:')?this.bagMap[key.slice(4)]:null;return Math.max(1,Math.floor(Number(l[6])||(bag&&Number(bag.packQuantity))||1));}
   orderLineStocked(l){return Math.max(0,Number(l[7])||0);}
   orderLineKnown(l){const key=String(l[0]||'');return key.startsWith('bag:')?Boolean(this.bagMap[key.slice(4)]):Boolean(this.map[key]);}
@@ -7757,7 +7778,9 @@ class Component extends DCLogic {
     this.flash(term.label+' plan created · '+(inventoryApplied?'current inventory allocated':'future inventory not allocated'));
   }
 
-  renderVals(){
+  // The price cache lives only for one render, so a price changed between renders is never read stale.
+  renderVals(){this._supplyCache={};try{return this.renderValsInner();}finally{this._supplyCache=null;}}
+  renderValsInner(){
     const S=this.state, sem=this.sem(),effectiveView=S.view==='pricing'||S.view==='search'?'list':S.view;
     const flag=p=>p&&Array.isArray(p.flags)&&p.flags.length?{flag:p.flags[0],flagStyle:'font-size:9px;font-weight:700;letter-spacing:.05em;padding:2px 6px;background:var(--color-accent-200);color:var(--color-accent-800);vertical-align:middle'}:{flag:'',flagStyle:'display:none'};
 
@@ -7808,7 +7831,7 @@ class Component extends DCLogic {
 
     // kits cards
     const kitsCards=this.kits.map(k=>{
-      const s=this.sales(k),items=this.kitItemsForTerm(k,sem.id),version=this.versionFor(k.id,sem.id),offered=this.isKitOffered(sem.id,k.id),price=this.kitSalePrice(k,sem.id),revenue=price===null?'—':this.m(s.sold*price),profit=price===null?'—':this.m(s.sold*(price-this.kitUnitCost(k,sem.id))),suggested=Number(sem.suggestedKits&&sem.suggestedKits[k.id])||0,known=s.inventoryKnown!==false,editable=this.status(sem.id)==='Planning'&&offered;
+      const s=this.sales(k),items=this.kitItemsForTerm(k,sem.id),version=this.versionFor(k.id,sem.id),offered=this.isKitOffered(sem.id,k.id),price=this.kitSalePrice(k,sem.id),cost=this.kitCostBreakdown(k,sem.id),revenue=price===null?'—':this.m(s.sold*price),profit=price===null?'—':this.m(s.sold*(price-cost.total)),unitPriceLabel=price===null?'Set a price':this.m(price),costPerUnit=this.m(cost.total)+(cost.estimated||cost.missing?' (est.)':''),profitPerUnit=price===null?'—':this.m(price-cost.total),profitStyle=price!==null&&price-cost.total<0?'color:var(--color-danger)':'color:var(--color-text)',suggested=Number(sem.suggestedKits&&sem.suggestedKits[k.id])||0,known=s.inventoryKnown!==false,editable=this.status(sem.id)==='Planning'&&offered;
       const inputField=(label,value,color,key)=>({label,value,color,editable,readOnly:!editable,onFocus:e=>this.focusNumberInput(e),onChange:e=>this.updatePlanningKitMetric(sem.id,k.id,key,e.target.value)});
       const planFields=k.individual?[inputField(s.planned?'Planned quantity':'Units sold',s.sold,'var(--color-neutral-700)','demand')]:[
         inputField(s.planned?'Planned demand':'Units sold',s.sold,'var(--color-neutral-700)','demand'),
@@ -7817,7 +7840,7 @@ class Component extends DCLogic {
         ...(s.planned?[{...inputField('Extra packing buffer',s.buffer||0,'var(--color-neutral-700)','buffer'),help:'Extra finished kits to prepare beyond forecast demand.'}]:[]),
         {label:s.planned?'To assemble':'To buy',help:'Calculated as demand + extra buffer − packed usable.',value:known?s.purchase:'',color:'var(--color-accent-700)',editable:false,readOnly:true,onFocus:()=>{},onChange:()=>{}},
       ];
-      return {code:k.individual?'GENERAL ITEM':k.code,name:k.name,status:offered?(s.planned?'Planning':k.individual?'General item':'Class kit'):'Not offered',tagClass:k.individual?'tag-outline':'tag-accent',soldLabel:s.planned?'Demand':'Sold',remainingLabel:s.planned?'Packed kits':'On hand',sold:this.num(s.sold),remaining:known?this.num(s.remaining):'—',faulty:known?this.num(s.faulty):'—',purchase:known?this.num(s.purchase):'—',planFields,itemsLabel:items.length+' components',units:s.sold,unitsLabel:s.planned?'Planned units':'Units sold',onUnits:e=>{if(offered)this.updateTermKitUnits(sem.id,k.id,e.target.value);},versionLabel:version?'V'+version.number:'Version',salePrice:price===null?'':price,onSalePrice:e=>{if(offered)this.updateTermKitPrice(sem.id,k.id,e.target.value);},inputStyle:offered?'':'opacity:.45;pointer-events:none',priceInputStyle:offered&&!this.isPastTerm(sem)?'':'opacity:.45;pointer-events:none',revenue,profit,offerLabel:offered?'Offered this semester':'Not offered this semester',offerStyle:`border:1px solid ${offered?'var(--color-accent)':'var(--color-divider)'};background:${offered?'var(--color-accent-100)':'transparent'};color:${offered?'var(--color-accent-800)':'var(--color-neutral-600)'};font-size:10.5px;font-weight:700;padding:4px 7px;cursor:pointer`,toggleOffering:()=>this.toggleTermKitOffering(sem.id,k.id),suggested:this.num(suggested),suggestionStyle:this.status(sem.id)==='Planning'&&suggested?'font-size:11px;padding:3px 5px':'display:none',applySuggestion:()=>this.updateTermKitUnits(sem.id,k.id,suggested),open:()=>this.setState({view:'kit',kitId:k.id}),
+      return {code:k.individual?'GENERAL ITEM':k.code,name:k.name,status:offered?(s.planned?'Planning':k.individual?'General item':'Class kit'):'Not offered',tagClass:k.individual?'tag-outline':'tag-accent',soldLabel:s.planned?'Demand':'Sold',remainingLabel:s.planned?'Packed kits':'On hand',sold:this.num(s.sold),remaining:known?this.num(s.remaining):'—',faulty:known?this.num(s.faulty):'—',purchase:known?this.num(s.purchase):'—',planFields,itemsLabel:items.length+' components',units:s.sold,unitsLabel:s.planned?'Planned units':'Units sold',onUnits:e=>{if(offered)this.updateTermKitUnits(sem.id,k.id,e.target.value);},versionLabel:version?'V'+version.number:'Version',salePrice:price===null?'':price,onSalePrice:e=>{if(offered)this.updateTermKitPrice(sem.id,k.id,e.target.value);},inputStyle:offered?'':'opacity:.45;pointer-events:none',priceInputStyle:offered&&!this.isPastTerm(sem)?'':'opacity:.45;pointer-events:none',revenue,profit,unitPriceLabel,costPerUnit,profitPerUnit,profitStyle,offerLabel:offered?'Offered this semester':'Not offered this semester',offerStyle:`border:1px solid ${offered?'var(--color-accent)':'var(--color-divider)'};background:${offered?'var(--color-accent-100)':'transparent'};color:${offered?'var(--color-accent-800)':'var(--color-neutral-600)'};font-size:10.5px;font-weight:700;padding:4px 7px;cursor:pointer`,toggleOffering:()=>this.toggleTermKitOffering(sem.id,k.id),suggested:this.num(suggested),suggestionStyle:this.status(sem.id)==='Planning'&&suggested?'font-size:11px;padding:3px 5px':'display:none',applySuggestion:()=>this.updateTermKitUnits(sem.id,k.id,suggested),open:()=>this.setState({view:'kit',kitId:k.id}),
       favLabel:k.fav?'★ Favorited':'☆ Favorite',
       favStyle:`border:1px solid ${k.fav?'var(--color-accent)':'var(--color-divider)'};background:${k.fav?'var(--color-accent-100)':'transparent'};color:${k.fav?'var(--color-accent-800)':'var(--color-neutral-600)'};font-size:10px;font-weight:700;letter-spacing:.03em;padding:2px 6px;cursor:pointer`,
       fav:e=>{e.stopPropagation();this.toggleFavorite(k);}}; });
@@ -7827,11 +7850,13 @@ class Component extends DCLogic {
     if(S.view==='kit'&&S.kitId){
       const k=this.kitMap[S.kitId],s=this.sales(k),known=s.inventoryKnown!==false,items=this.kitItemsForTerm(k,sem.id);
       const rows=items.map(it=>{
-        const p=this.map[it.p]||{id:it.p,name:it.p,role:'Unlinked component',cat:'Unlinked'},pinKey=sem.id+':'+p.id,buy=this.purchaseComponent(pinKey,p.id)||p,rawTotal=it.q*s.purchase,orderQty=this.componentPurchaseQuantity(buy.id,rawTotal),wire=this.wireCalculation(buy.id,rawTotal),b=this.map[buy.id]&&orderQty?this.best(buy.id,Math.max(1,orderQty)):null,pd=this.paid(buy.id,sem.id),selectedAlt=buy.id!==p.id,discontinued=p.lifecycleStatus==='discontinued';
+        const p=this.map[it.p]||{id:it.p,name:it.p,role:'Unlinked component',cat:'Unlinked'},pinKey=sem.id+':'+p.id,buy=this.purchaseComponent(pinKey,p.id)||p,rawTotal=it.q*s.purchase,orderQty=this.componentPurchaseQuantity(buy.id,rawTotal),wire=this.wireCalculation(buy.id,rawTotal),b=this.map[buy.id]&&orderQty?this.best(buy.id,Math.max(1,orderQty)):null,supply=this.map[p.id]?this.chosenSupply(p,sem.id,rawTotal):{unit:null,vendors:[],choice:{source:''}},pd=this.paid(buy.id,sem.id),selectedAlt=buy.id!==p.id,discontinued=p.lifecycleStatus==='discontinued';
         const purchaseLine=selectedAlt?'Buy '+buy.name+' · approved replacement':discontinued?'Discontinued · choose an approved replacement in Procurement':p.alternativeFor?'Approved replacement for '+((this.map[p.alternativeFor]||{}).name||p.alternativeFor):'';
-        return{name:p.name,...this.lineProgressFields(pinKey,p.name,sem.label),_progress:this.lineProgressOf(pinKey),desc:p.role.split(' — ')[0].split('.')[0].slice(0,52),requirement:it.note||'—',qty:it.q,total:known?(wire?this.num(rawTotal)+' cuts ('+this.num(wire.spools)+' spool'+(wire.spools===1?'':'s')+')':this.num(rawTotal)):'—',unit:orderQty&&b?this.mu(b.unit):'—',vendor:orderQty&&b?b.vendor:'—',paid:pd?this.mu(pd.unit):'—',purchaseLine,purchaseStyle:purchaseLine?'font-size:9.5px;color:'+(discontinued&&!selectedAlt?'var(--color-danger)':'var(--color-accent-700)')+';margin-top:3px':'display:none',...flag(p),_cost:orderQty&&b?b.ext:0,open:()=>{if(this.map[buy.id])this.openPart(buy.id);}};
+        return{name:p.name,...this.lineProgressFields(pinKey,p.name,sem.label),_progress:this.lineProgressOf(pinKey),desc:p.role.split(' — ')[0].split('.')[0].slice(0,52),requirement:it.note||'—',qty:it.q,total:known?(wire?this.num(rawTotal)+' cuts ('+this.num(wire.spools)+' spool'+(wire.spools===1?'':'s')+')':this.num(rawTotal)):'—',unit:orderQty&&supply.unit!=null?this.mu(supply.unit)+(wire?' / spool':''):'—',vendor:orderQty?(supply.vendors.length?supply.vendors.join(' + '):'No vendor chosen'):'—',vendorNote:orderQty?(supply.vendors.length?(supply.choice.source==='line'?'pinned for this line':supply.choice.source==='semester'?'semester vendor':supply.vendors.length>1?'split to keep the cost lowest':'recommended'):'planning estimate only'):'',vendorNoteStyle:orderQty?'font-size:10px;color:var(--color-neutral-600);margin-top:2px':'display:none',paid:pd?this.mu(pd.unit)+(wire?' / spool':''):'—',purchaseLine,purchaseStyle:purchaseLine?'font-size:9.5px;color:'+(discontinued&&!selectedAlt?'var(--color-danger)':'var(--color-accent-700)')+';margin-top:3px':'display:none',...flag(p),_cost:orderQty?(supply.plan&&supply.plan.allocations.length?supply.plan.total:b?b.ext:0):0,open:()=>{if(this.map[buy.id])this.openPart(buy.id);}};
       });
-      kit={code:k.individual?'GENERAL ITEM':k.code,name:k.name,tagClass:k.individual?'tag-outline':'tag-accent',canEdit:true,stats:k.individual?[{val:this.num(s.sold),label:s.planned?'Planned quantity':'Sold',color:'var(--color-text)'}]:[{val:this.num(s.sold),label:s.planned?'Planned demand':'Sold',color:'var(--color-text)'},{val:known?this.num(s.remaining):'—',label:s.planned?'Packed allocated':'On hand',color:'var(--color-text)'},{val:known?this.num(s.faulty):'—',label:'Faulty',color:'var(--color-text)'},...(s.planned?[{val:this.num(s.buffer||0),label:'Extra buffer',color:'var(--color-text)'}]:[]),{val:known?this.num(s.total):'—',label:'Total target',color:'var(--color-text)'},{val:known?this.num(s.purchase):'—',label:'To assemble',color:'var(--color-accent-700)'}],rows,rowCount:items.length+' components',progress:(()=>{const total=rows.length,count=id=>rows.filter(r=>r._progress===id).length,checked=rows.filter(r=>['reviewed','purchased','received'].includes(r._progress)).length,pct=total?Math.round(checked/total*100):0;return{label:checked+' of '+total+' checked',pct:pct+'%',barStyle:'height:100%;background:var(--color-accent);width:'+pct+'%',breakdown:this.lineProgressOptions.map(o=>count(o.id)+' '+o.label.toLowerCase()).join(' · '),style:total?'':'display:none'};})(),totalUnits:known?this.num(items.reduce((t,it)=>t+it.q*s.purchase,0))+' cuts / pieces':'—',total:known?this.m(rows.reduce((t,row)=>t+row._cost,0)).replace('.00',''):'—',editKit:()=>this.startKitEdit(k.id,sem.id),kitToList:()=>{this.setState({view:'list'});this.flash(k.code+' folded into shopping list');}};
+      const kitPrice=this.kitSalePrice(k,sem.id),kitCost=this.kitCostBreakdown(k,sem.id),kitProfitEach=kitPrice==null?null:kitPrice-kitCost.total,money=v=>v==null?'—':this.m(v),tone=v=>v==null?'var(--color-neutral-600)':v<0?'var(--color-danger)':'var(--color-text)';
+      const economics=[{val:kitPrice==null?'Set price':this.m(kitPrice),label:'Unit price',color:kitPrice==null?'var(--color-accent-700)':'var(--color-text)'},{val:money(kitPrice==null?null:kitPrice*s.sold),label:'Revenue',color:'var(--color-text)'},{val:this.m(kitCost.total),label:'Cost / unit'+(kitCost.estimated||kitCost.missing?' (est.)':''),color:'var(--color-text)'},{val:money(kitProfitEach),label:'Profit / unit',color:tone(kitProfitEach)},{val:money(kitProfitEach==null?null:kitProfitEach*s.sold),label:'Profit',color:tone(kitProfitEach)}];
+      kit={code:k.individual?'GENERAL ITEM':k.code,name:k.name,tagClass:k.individual?'tag-outline':'tag-accent',canEdit:true,stats:[...(k.individual?[{val:this.num(s.sold),label:s.planned?'Planned quantity':'Sold',color:'var(--color-text)'}]:[{val:this.num(s.sold),label:s.planned?'Planned demand':'Sold',color:'var(--color-text)'},{val:known?this.num(s.remaining):'—',label:s.planned?'Packed allocated':'On hand',color:'var(--color-text)'},{val:known?this.num(s.faulty):'—',label:'Faulty',color:'var(--color-text)'},...(s.planned?[{val:this.num(s.buffer||0),label:'Extra buffer',color:'var(--color-text)'}]:[]),{val:known?this.num(s.total):'—',label:'Total target',color:'var(--color-text)'},{val:known?this.num(s.purchase):'—',label:'To assemble',color:'var(--color-accent-700)'}]),...economics],rows,rowCount:items.length+' components',progress:(()=>{const total=rows.length,count=id=>rows.filter(r=>r._progress===id).length,checked=rows.filter(r=>['reviewed','purchased','received'].includes(r._progress)).length,pct=total?Math.round(checked/total*100):0;return{label:checked+' of '+total+' checked',pct:pct+'%',barStyle:'height:100%;background:var(--color-accent);width:'+pct+'%',breakdown:this.lineProgressOptions.map(o=>count(o.id)+' '+o.label.toLowerCase()).join(' · '),style:total?'':'display:none'};})(),totalUnits:known?this.num(items.reduce((t,it)=>t+it.q*s.purchase,0))+' cuts / pieces':'—',total:known?this.m(rows.reduce((t,row)=>t+row._cost,0)).replace('.00',''):'—',editKit:()=>this.startKitEdit(k.id,sem.id),kitToList:()=>{this.setState({view:'list'});this.flash(k.code+' folded into shopping list');}};
     }
 
     // builder
@@ -8275,7 +8300,7 @@ class Component extends DCLogic {
         view:()=>this.setState({scope:'global',gview:'kit-history',kitHistoryId:k.id,selectedVersionId:k.latestVersionId})}))};
 
     const historyKit=this.kitMap[S.kitHistoryId]||this.kits[0];
-    const costFor=(k,t,latest)=>this.kitItemsForTerm(k,t.id).reduce((sum,it)=>{const q=Math.max(1,it.q*(this.sales(k,t.id).purchase||this.sales(k,t.id).sold||1));const price=latest?this.best(it.p,q).unit:(this.paid(it.p,t.id)||{}).unit;return price===undefined?sum:sum+it.q*price;},0);
+    const costFor=(k,t,latest)=>latest?this.kitUnitCost(k,t.id):this.kitItemsForTerm(k,t.id).reduce((sum,it)=>{const paid=this.paid(it.p,t.id),wire=this.wireCalculation(it.p,1);return paid?sum+it.q*(wire?paid.unit/wire.conservative:paid.unit):sum;},0);
     const paidComplete=(k,t)=>this.kitItemsForTerm(k,t.id).every(it=>Boolean(this.paid(it.p,t.id)));
     const rawVersions=this.kitVersions.filter(v=>v.kitId===historyKit.id).sort((a,b)=>(b.number||0)-(a.number||0)),selectedRaw=rawVersions.find(v=>v.id===S.selectedVersionId)||rawVersions[0];
     const versionView=v=>{const assigned=this.terms.filter(t=>t.kitVersions&&t.kitVersions[historyKit.id]===v.id).sort((a,b)=>this.termSortValue(a)-this.termSortValue(b));return{id:v.id,number:v.number,label:v.label,range:assigned.length?(assigned[0].label+(assigned.length>1?' – '+assigned[assigned.length-1].label:'')):'Not assigned',parts:(v.items||[]).length,price:v.salePrice===null||v.salePrice===undefined?'—':this.m(v.salePrice),created:new Date(v.createdAt).toLocaleDateString(),items:(v.items||[]).map(it=>({name:(this.map[it.p]||{}).name||it.p,cat:(this.map[it.p]||{}).cat||'—',note:it.note||'—',qty:it.q})),edit:()=>this.startKitEdit(historyKit.id,'future',v.id),remove:()=>this.deleteKitVersion(v.id)};};
