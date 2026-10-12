@@ -735,4 +735,50 @@ window.LabKitImportBatches = [window.LabKitCartImport, {
    ]
   }
  ]
+}, {
+ "version": "2026-10-12-bundle",
+ "cartDate": "2026-10-12",
+ "lines": [],
+ "alternatives": {},
+ "parts": [],
+ "kits": [],
+ "links": [],
+ "packs": [],
+ "orders": [],
+ "bundles": [
+  {
+   "vendor": "Amazon",
+   "sku": "B07JNB712X",
+   "productUrl": "https://www.amazon.com/dp/B07JNB712X?th=1",
+   "note": "One product with two spools: one red and one black, each 100 m. The price is split between the two colors by spool count x length.",
+   "items": [
+    {
+     "component": "wred",
+     "spools": 1,
+     "length": 100,
+     "unit": "m"
+    },
+    {
+     "component": "wblk",
+     "spools": 1,
+     "length": 100,
+     "unit": "m"
+    }
+   ]
+  }
+ ],
+ "orderPacks": [
+  {
+   "order": "AMZ-B07JNB712X",
+   "component": "wred",
+   "length": 100,
+   "unit": "m"
+  },
+  {
+   "order": "AMZ-B07JNB712X",
+   "component": "wblk",
+   "length": 100,
+   "unit": "m"
+  }
+ ]
 }];

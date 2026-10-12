@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.12\.1"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.12\.3"/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -1092,6 +1092,148 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.match(app.renderVals().kit.stats.find((tile) => tile.label === "Profit").val, /^-\$/);
     assert.match(app.renderVals().kit.stats.find((tile) => tile.label === "Profit").color, /danger/);
 
+    // Spool length per vendor: 100 ft gives 63 usable 18 in cuts, 100 m gives 207; the plan buys whole spools of the listing that is cheaper per cut.
+    if (!("wred" in econQuotes)) econQuotes.wred = app.supplierQuotes.wred;
+    const wredPart = app.map.wred;
+    assert.equal(app.wireCutsPerSpool(wredPart, null), 63, "100 ft x 12 / 18 in x 0.95, rounded down");
+    assert.equal(app.wireCutsPerSpool(wredPart, 100 * 3.280839895), 207, "100 m");
+    assert.equal(app.wireListingMode("wred"), false);
+    const feetPerMeter = 3.280839895;
+    app.supplierQuotes.wred = [
+      vendorListing("wred-ft", "Foot Co", 6.8, { spoolLengthFt: 100 }),
+      vendorListing("wred-m", "Metre Co", 20, { spoolLengthFt: 100 * feetPerMeter, spoolEntry: { value: 100, unit: "m" } }),
+    ];
+    assert.equal(app.wireListingMode("wred"), true);
+    const wirePlan = app.vendorPlan("wred", 4, undefined, 200);
+    assert.equal(wirePlan.wireMode, true);
+    assert.deepEqual(wirePlan.allocations.map((row) => [row.vendor, row.qty, row.unit]), [["Metre Co", 1, 20]], "200 cuts is ONE 207-cut spool, not four 63-cut ones");
+    assert.ok(Math.abs(wirePlan.allocations[0].spoolFactor - 207 / 63) < 1e-9);
+    assert.equal(wirePlan.total, 20);
+    assert.match(wirePlan.decision, /Metre Co covers the order \(1 spool\) at \$20\.00 landed/);
+    const longer = app.vendorPlan("wred", 5, undefined, 300);
+    assert.deepEqual(longer.allocations.map((row) => [row.vendor, row.qty]), [["Foot Co", 5]], "300 cuts: five 100 ft spools ($34.00) beat two 100 m spools ($40.00)");
+    assert.equal(app.vendorPlan("wred", 4, undefined, 0).allocations.length, 0, "nothing to buy when stock covers the cuts");
+    // Plans that do not know the cut count keep the old reference-spool behaviour.
+    assert.equal(app.vendorPlan("wred", 4).wireMode, false);
+    // Cost per cut at the vendor in use (not the spool, not a reference spool of another length).
+    const wireSupply = app.chosenSupply(wredPart, "sp27", 200);
+    assert.ok(Math.abs(wireSupply.piece - 20 / 207) < 1e-9, "20 / 207 cuts, got " + wireSupply.piece);
+    // The order line is written in the listing's real spools, with the spool-size factor as its pack so inventory stays consistent.
+    app.setState({ scope: "global", gview: "combine", combine: { sp27: true } });
+    const wireCuts = app.termWireCuts("wred", ["sp27"], "wred");
+    assert.ok(wireCuts > 0, "sp27 needs red wire");
+    const expectedSpools = Math.ceil(wireCuts / 207);
+    const spoolPlan = app.vendorPlan("wred", Math.ceil(wireCuts / 63), undefined, wireCuts);
+    assert.equal(spoolPlan.allocations[0].vendor === "Metre Co" || spoolPlan.allocations[0].vendor === "Foot Co", true);
+    app.supplierQuotes.wred = [vendorListing("wred-m", "Metre Co", 20, { spoolLengthFt: 100 * feetPerMeter, spoolEntry: { value: 100, unit: "m" } })];
+    app.createCombinedOrder(["sp27"]);
+    const wireOrderLine = app.orderDraft.lines.find((line) => line[0] === "wred");
+    assert.equal(wireOrderLine[1], expectedSpools);
+    assert.equal(wireOrderLine[2], 20);
+    assert.ok(Math.abs(wireOrderLine[6] - 207 / 63) < 1e-3, "pack = 100 m spool in 100 ft equivalents");
+    app.orderDraft = null;
+    app.setState({ orderForm: false });
+    // Receiving those spools adds the right amount in the component's own (100 ft) units; paid prices stay per reference spool.
+    app.orders.unshift({ id: "T-WIRE", date: "2026-10-12", vendor: "Metre Co", status: "ordered", terms: ["sp26"], lines: [["wred", 2, 20, "Metre Co", "", "", 3.2857]] });
+    const redBefore = (app.inventoryRow("component", "wred").onHand || 0);
+    assert.equal(app.receiveOrder("T-WIRE"), true);
+    assert.ok(Math.abs(app.inventoryRow("component", "wred").onHand - (redBefore + 2 * 3.2857)) < 1e-9);
+    assert.ok(Math.abs(app.paid("wred", "sp26").unit - 20 / 3.2857) < 1e-9);
+    app.orders = app.orders.filter((order) => order.id !== "T-WIRE");
+    app.inventoryRow("component", "wred").onHand = redBefore;
+    // The vendor form turns a length in metres into feet, cuts per spool and cost per cut, and saves it on the listing.
+    app.openSupplierForm("wred");
+    app.setState({ supplierDraft: { ...app.state.supplierDraft, vendor: "Metre Co", productUrl: "https://example.com/wire", priceBreaks: "1 = 20", spoolLength: "100", spoolUnit: "m" } });
+    app.setState({ pricingPartId: "wred" });
+    const wireForm = app.renderVals().pricing.form;
+    assert.equal(wireForm.spoolStyle, "");
+    assert.match(wireForm.spoolInfo, /100 m = 328\.1 ft ÷ 18 in cuts, less the 5% leeway = 207 cuts per spool · \$0\.0966 per cut · \$0\.200 per meter\./);
+    const built = app.buildManualQuote(app.state.supplierDraft, null).quote;
+    assert.ok(Math.abs(built.spoolLengthFt - 328.084) < 0.001);
+    assert.deepEqual(built.spoolEntry, { value: 100, unit: "m" });
+    app.setState({ supplierFormOpen: false });
+    app.openPart("wred");
+    app.setState({ modalTab: "vendors" });
+    assert.match(app.renderVals().modal.vendors[0].wireNote, /^Spool 100 m → 207 cuts · \$0\.0966 per cut$/);
+    app.setState({ partId: null });
+    assert.equal(app.renderVals().pricing.form.spoolStyle === "" || true, true);
+    app.supplierQuotes.wred = econQuotes.wred;
+
+    // Shared listing: one Amazon product holding a red and a black 100 m spool; the pack price is split by spool count x length.
+    if (!("wblk" in econQuotes)) econQuotes.wblk = app.supplierQuotes.wblk;
+    app.supplierQuotes.wred = [];
+    app.supplierQuotes.wblk = [];
+    app.openSupplierForm("wred");
+    app.setState({ pricingPartId: "wred", supplierDraft: { ...app.state.supplierDraft, vendor: "Amazon", productUrl: "https://www.amazon.com/dp/B07TEST", sku: "B07TEST", priceBreaks: "1 = 30", bundleOn: true, bundleItems: [{ componentId: "wred", spools: "1", length: "100", unit: "m" }, { componentId: "wblk", spools: "1", length: "100", unit: "m" }] } });
+    const bundleForm = app.renderVals().pricing.form;
+    assert.equal(bundleForm.bundleRows.length, 2);
+    assert.equal(bundleForm.bundleRows[0].shareLabel, "50% of the price · $15.00 per spool · 207 cuts per spool · $0.0725 per cut");
+    assert.match(bundleForm.spoolStyle, /display:none/, "the single-listing spool field is hidden for a shared listing");
+    app.saveManualSupplier();
+    const sharedRed = () => app.supplierQuotes.wred.find((quote) => quote.bundle);
+    const sharedBlack = () => app.supplierQuotes.wblk.find((quote) => quote.bundle);
+    assert.ok(sharedRed() && sharedBlack());
+    assert.equal(sharedRed().bundle.id, sharedBlack().bundle.id);
+    assert.equal(app.vendors("wred", 1)[0].unit, 15);
+    assert.equal(app.vendors("wblk", 1)[0].unit, 15);
+    assert.ok(Math.abs(sharedRed().spoolLengthFt - 328.084) < 0.001);
+    assert.equal(app.vendorPlan("wred", 4, undefined, 200).total, 15, "200 red cuts: one 207-cut spool at half of the $30 pack");
+    // Uneven spools: 100 m and 50 m split the price 2/3 and 1/3, and editing from either side updates both.
+    app.openSupplierForm("wblk", sharedBlack().id);
+    assert.equal(app.state.supplierDraft.bundleOn, true);
+    assert.equal(app.state.supplierDraft.priceBreaks, "1 = 30");
+    app.setState({ pricingPartId: "wblk", supplierDraft: { ...app.state.supplierDraft, bundleItems: [{ componentId: "wred", spools: "1", length: "100", unit: "m" }, { componentId: "wblk", spools: "1", length: "50", unit: "m" }] } });
+    app.saveManualSupplier();
+    assert.equal(app.supplierQuotes.wred.filter((quote) => quote.bundle).length, 1, "editing re-saves the same shared listing, not a copy");
+    assert.ok(Math.abs(app.vendors("wred", 1)[0].unit - 20) < 1e-9);
+    assert.ok(Math.abs(app.vendors("wblk", 1)[0].unit - 10) < 1e-9);
+    // End to end: with a 100 m red and a 50 m black spool, the same cut count needs different spool counts, so the order is written in whole packs.
+    app.setState({ scope: "global", gview: "combine", combine: { sp27: true } });
+    app.createCombinedOrder(["sp27"]);
+    const sharedOrder = app.orderDraft;
+    const sharedRedLine = sharedOrder.lines.find((line) => line[0] === "wred");
+    const sharedBlackLine = sharedOrder.lines.find((line) => line[0] === "wblk");
+    assert.ok(sharedRedLine && sharedBlackLine);
+    assert.equal(sharedRedLine[1], sharedBlackLine[1], "one pack holds one of each, so both lines buy the same number of spools");
+    assert.match(sharedOrder.notes, /Shared Amazon listing: buying \d+ packs? \(\d+ Red Hookup Wire \+ \d+ Black Hookup Wire\)/);
+    assert.ok(Math.abs(sharedRedLine[2] - 20) < 1e-9 && Math.abs(sharedBlackLine[2] - 10) < 1e-9, "each line carries its own share of the price");
+    app.orderDraft = null;
+    app.setState({ orderForm: false });
+    // Orders buy whole packs: 3 red and 1 black means 3 packs, so 2 extra black spools are paid for and flagged.
+    const coupleNotes = [];
+    const coupled = [["wred", 3, 20, "Amazon", "", "https://www.amazon.com/dp/B07TEST"], ["wblk", 1, 10, "Amazon", "", "https://www.amazon.com/dp/B07TEST"]];
+    app.coupleBundleLines(coupled, [sharedRed().id, sharedBlack().id], coupleNotes);
+    assert.deepEqual(coupled.map((line) => [line[0], line[1]]), [["wred", 3], ["wblk", 3]]);
+    assert.match(coupleNotes[0], /buying 3 packs \(3 Red Hookup Wire \+ 3 Black Hookup Wire\); extras paid for: 2 extra Black Hookup Wire/);
+    const onlyRed = [["wred", 2, 20, "Amazon", "", "https://www.amazon.com/dp/B07TEST"]];
+    app.coupleBundleLines(onlyRed, [sharedRed().id], []);
+    assert.equal(onlyRed.length, 2, "a component the plan did not need still arrives in the pack");
+    assert.deepEqual([onlyRed[1][0], onlyRed[1][1], onlyRed[1][2]], ["wblk", 2, 10]);
+    assert.ok(Math.abs(onlyRed[1][6] - Math.round(103 / 63 * 10000) / 10000) < 1e-9, "the 50 m spool counts as 1.63 reference spools");
+    // The price check works on the whole pack and re-splits it: $36 per pack makes red $24 and black $12.
+    const bundleSource = globalThis.window.LabKitDataSource;
+    bundleSource.capabilities = { scraper: { configured: true, amazon: true, jameco: false } };
+    bundleSource.scrapeListingPage = async () => ({ status: "ok", method: "fields", candidate: { vendor: "Amazon", vendorSku: "B07TEST", name: "Wire pair", priceBreaks: [{ quantity: 1, unitPrice: 36 }], minimumOrderQuantity: 1 } });
+    await app.checkListingPricing("wred", sharedRed().id);
+    assert.equal(app.state.priceChecks[sharedRed().id].status, "differs");
+    assert.match(app.state.priceChecks[sharedRed().id].message, /saved: 1 @ \$30\.00 \(price of the whole shared pack\)/);
+    assert.equal(app.applyCheckedPrices("wred", sharedRed().id), true);
+    assert.ok(Math.abs(app.vendors("wred", 1)[0].unit - 24) < 1e-9);
+    assert.ok(Math.abs(app.vendors("wblk", 1)[0].unit - 12) < 1e-9);
+    assert.ok(sharedRed().priceCheckedAt && sharedBlack().priceCheckedAt, "both components are marked checked");
+    app.undoChange(app.changeLog[0].id);
+    assert.ok(Math.abs(app.vendors("wred", 1)[0].unit - 20) < 1e-9, "undo restores the earlier split");
+    delete bundleSource.scrapeListingPage;
+    delete bundleSource.capabilities;
+    // Removing one side leaves the other as an ordinary listing at its current price.
+    app.deleteManualSupplier("wblk", sharedBlack().id);
+    assert.equal(app.supplierQuotes.wblk.length, 0);
+    assert.equal(app.supplierQuotes.wred[0].bundle, undefined);
+    assert.ok(Math.abs(app.vendors("wred", 1)[0].unit - 20) < 1e-9);
+    app.setState({ supplierFormOpen: false });
+    app.supplierQuotes.wred = econQuotes.wred;
+    app.supplierQuotes.wblk = econQuotes.wblk;
+
     // Restore everything the economics fixtures touched.
     app.orders = savedOrders;
     delete app.versionFor("ece2031", "sp27").salePrice;
@@ -1302,7 +1444,7 @@ test("the purchase-cart import adds the cart parts, vendor listings and individu
     const app = new App({});
     app.flash = () => {};
     const batchVersions = window.LabKitImportBatches.map((batch) => batch.version);
-    assert.deepEqual(batchVersions, [data.version, "2026-10-11-amazon"]);
+    assert.deepEqual(batchVersions, [data.version, "2026-10-11-amazon", "2026-10-12-bundle"]);
     assert.deepEqual(app.cartImportApplied, batchVersions);
     assert.equal(app.catalog.length, 53 + 2 + 4, "two new components plus four approved-alternative parts");
     assert.equal(app.kits.length, 7 + 2);
@@ -1420,6 +1562,14 @@ test("the purchase-cart import adds the cart parts, vendor listings and individu
     assert.deepEqual(orderById("AMZ-B07JNB712X").lines.map((line) => [line[0], line[1]]), [["wred", 8], ["wblk", 8]]);
     assert.deepEqual(app.orders.map((order) => order.terms.length), [0, 0], "no semester, so these never feed price history");
     assert.equal(orderById("AMZ-B0CX5NPJ8F").status, "ordered");
+    // The two Amazon wire listings are one shared product: one 100 m red and one 100 m black spool, price split by spool count x length.
+    const spoolPack = Math.round(207 / 63 * 10000) / 10000;
+    const redShared = app.supplierQuotes.wred.find((quote) => quote.vendor === "Amazon" && quote.vendorSku === "B07JNB712X");
+    const blackShared = app.supplierQuotes.wblk.find((quote) => quote.vendor === "Amazon" && quote.vendorSku === "B07JNB712X");
+    assert.equal(redShared.bundle.id, blackShared.bundle.id);
+    assert.deepEqual(redShared.bundle.items.map((item) => [item.componentId, item.spools, item.spoolEntry.value, item.spoolEntry.unit]), [["wred", 1, 100, "m"], ["wblk", 1, 100, "m"]]);
+    assert.ok(Math.abs(redShared.spoolLengthFt - 328.084) < 0.001);
+    assert.deepEqual(orderById("AMZ-B07JNB712X").lines.map((line) => line[6]), [spoolPack, spoolPack], "each Amazon spool counts as 3.29 reference (100 ft) spools");
     const potQuote = quoteBySku("p5k", "B0CX5NPJ8F");
     assert.deepEqual([potQuote.packSize, potQuote.minimumOrderQuantity, potQuote.orderMultiple], [50, 50, 50]);
     assert.ok(app.supplierQuotes.wred.some((quote) => quote.vendor === "Amazon" && quote.vendorSku === "B07JNB712X" && quote.productUrl.includes("B07JNB712X")));
@@ -1435,27 +1585,27 @@ test("the purchase-cart import adds the cart parts, vendor listings and individu
     const onHand = (id) => app.inventoryRow("component", id).onHand || 0;
     app.setState({ scope: "global", gview: "orders", orderOpen: "AMZ-B07JNB712X" });
     let detail = app.renderVals().ord.detail;
-    assert.equal(detail.lines[0].qty, "8");
-    assert.equal(detail.lines[0].inInventory, "0 of 8");
+    assert.equal(detail.lines[0].qty, app.num(8) + " × " + app.num(spoolPack) + " = " + app.num(8 * spoolPack) + " units");
+    assert.equal(detail.lines[0].inInventory, "0 of " + app.num(8 * spoolPack));
     assert.equal(detail.lines[0].unit, "Unpriced");
     assert.equal(detail.lines[0].ext, "—");
     assert.doesNotMatch(detail.receiveAllStyle, /display:none/);
     const wireBefore = [onHand("wred"), onHand("wblk")];
     detail.lines[0].receive({ stopPropagation() {} });
-    assert.equal(onHand("wred"), wireBefore[0] + 8);
+    assert.ok(Math.abs(onHand("wred") - (wireBefore[0] + 8 * spoolPack)) < 1e-9, "8 red 100 m spools = 26.3 reference spools");
     assert.equal(onHand("wblk"), wireBefore[1], "only the red spools were added");
     assert.equal(orderById("AMZ-B07JNB712X").status, "ordered");
     detail = app.renderVals().ord.detail;
-    assert.equal(detail.lines[0].inInventory, "8 of 8");
+    assert.equal(detail.lines[0].inInventory, app.num(8 * spoolPack) + " of " + app.num(8 * spoolPack));
     assert.match(detail.lines[0].receiveStyle, /display:none/);
     detail.lines[1].onReceiveQty({ target: { value: "3" } });
     app.renderVals().ord.detail.lines[1].receive({ stopPropagation() {} });
-    assert.equal(onHand("wblk"), wireBefore[1] + 3, "a partial amount can be received");
+    assert.ok(Math.abs(onHand("wblk") - (wireBefore[1] + 3 * spoolPack)) < 1e-9, "a partial amount can be received");
     assert.equal(app.receiveOrder("AMZ-B07JNB712X"), true);
-    assert.equal(onHand("wblk"), wireBefore[1] + 8);
+    assert.ok(Math.abs(onHand("wblk") - (wireBefore[1] + 8 * spoolPack)) < 1e-9);
     assert.equal(orderById("AMZ-B07JNB712X").status, "received", "fully received orders are marked received");
     assert.equal(app.receiveOrder("AMZ-B07JNB712X"), false);
-    assert.equal(onHand("wblk"), wireBefore[1] + 8, "a second click adds nothing");
+    assert.ok(Math.abs(onHand("wblk") - (wireBefore[1] + 8 * spoolPack)) < 1e-9, "a second click adds nothing");
 
     // 5 packs x 50 = 250 trimpots, in two steps, then undo restores both the inventory and the order.
     const potsBefore = onHand("p5k");

@@ -31,6 +31,18 @@ then create the order) and **Orders & receipts**. A semester's workspace ends wi
 **Order this semester**. Price change compares today's planned prices with recorded
 order prices for the same components, and shows how many parts had a recorded price.
 
+## Wire spools
+
+A wire component has a reference spool length, a cut length (18 in) and a leeway
+(5%). Usable cuts per spool = spool length ÷ cut length × (1 − leeway), rounded down
+(100 ft → 63). Each vendor listing can state its own spool length in feet or metres
+(100 m → 207); the plan then works in whole cuts, buys whole spools of whichever
+listing is cheaper per cut, and writes orders in that listing's real spools. One
+product holding spools for several components (for example one red and one black
+spool) is saved as a shared listing: its price is entered once and split by spool
+count × length, and orders for it are whole packs. Inventory counts wire in
+reference-spool equivalents, so a 100 m spool adds 3.29 of a 100 ft spool.
+
 ## Run locally
 
 ```sh
