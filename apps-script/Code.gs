@@ -373,15 +373,44 @@ function verifySnapshot_(user, input) {
     payload.expectedVersion,
     "expectedVersion"
   );
+  const expectedDigest = requireString_(payload.expectedDigest, "expectedDigest", 64).toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expectedDigest)) {
+    throw appError_("INVALID_INPUT", "expectedDigest must be a SHA-256 checksum.");
+  }
   renewRequiredEditorLease_(user, sessionId, input.sessionLabel);
-  // This is deliberately a fresh spreadsheet read after saveSnapshot_ has
-  // flushed its writes. The browser compares this stored snapshot with the
-  // exact snapshot it submitted before showing "Saved & verified."
+  // Deliberately read AppState again after saveSnapshot_ flushed its writes.
+  // Returning only a digest avoids round-tripping a multi-megabyte snapshot
+  // through google.script.run merely to prove that the stored copy matches.
   const state = readState_();
+  const storedDigest = state ? snapshotDigest_(state.snapshot) : "";
   return {
-    state: state,
+    version: state ? state.version : 0,
     versionMatches: Boolean(state && state.version === expectedVersion),
+    storedDigest: storedDigest,
+    digestMatches: Boolean(storedDigest && storedDigest === expectedDigest),
   };
+}
+
+function canonicalizeForDigest_(value) {
+  if (Array.isArray(value)) return value.map(canonicalizeForDigest_);
+  if (value === null || typeof value !== "object") return value;
+  return Object.keys(value).sort().reduce(function (output, key) {
+    const normalized = canonicalizeForDigest_(value[key]);
+    if (normalized !== undefined) output[key] = normalized;
+    return output;
+  }, {});
+}
+
+function snapshotDigest_(snapshot) {
+  const text = JSON.stringify(canonicalizeForDigest_(snapshot));
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    text,
+    Utilities.Charset.UTF_8
+  );
+  return bytes.map(function (byte) {
+    return ((byte + 256) % 256).toString(16).padStart(2, "0");
+  }).join("");
 }
 
 function suggestSemester_(input) {

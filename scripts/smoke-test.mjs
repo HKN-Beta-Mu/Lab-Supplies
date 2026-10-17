@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -13,7 +14,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.17\.2"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.17\.3"/);
   assert.match(html, />\{\{ saveButtonLabel \}\}<\/button>/);
   assert.match(html, /Buffer \(%\)/);
   assert.match(html, /Buffer kits/);
@@ -1861,6 +1862,7 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
   let storedSnapshot = null;
   let storedVersion = 0;
   let returnMismatchedVerification = false;
+  let verificationVersionOffset = 0;
   let forcedSaveError = null;
   let deferVerification = false;
   let releaseVerification = null;
@@ -1900,12 +1902,13 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
           storedVersion = request.payload.expectedVersion + 1;
           successHandler({ ok: true, data: { version: storedVersion, duplicate: false } });
         } else if (request.action === "verifySnapshot") {
-          const snapshot = returnMismatchedVerification
-            ? { ...storedSnapshot, orders: [{ id: "different-stored-order", lines: [] }] }
-            : storedSnapshot;
           const response = { ok: true, data: {
-            state: { version: storedVersion, snapshot },
+            version: storedVersion + verificationVersionOffset,
             versionMatches: request.payload.expectedVersion === storedVersion,
+            storedDigest: returnMismatchedVerification
+              ? "f".repeat(64)
+              : request.payload.expectedDigest,
+            digestMatches: !returnMismatchedVerification,
           } };
           if (deferVerification) {
             const deferredSuccess = successHandler;
@@ -1920,7 +1923,11 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
   const browser = {
     __LABKIT_APPS_SCRIPT__: true,
     google: { script: { run: runner } },
-    crypto: { randomUUID: () => "12345678-test-request" },
+    crypto: {
+      randomUUID: () => "12345678-test-request",
+      subtle: { digest: async () => new Uint8Array(32).buffer },
+    },
+    TextEncoder,
     location: { reload() {} },
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     setTimeout(callback) {
@@ -1994,6 +2001,15 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
   assert.equal(requests.at(-1).payload.expectedVersion, 2);
   assert.match(browser.LabKitDataSource.statusLabel, /Saved & verified/);
   assert.equal(browser.LabKitDataSource.hasUnsavedChanges, false);
+
+  verificationVersionOffset = 1;
+  const verifiedSameContentAtNewerVersion = await browser.LabKitDataSource.commit({
+    ...browser.LabKitDataSource.load(),
+    orders: [{ id: "PO-same-content-new-version", vendor: "Mouser", lines: [] }],
+  });
+  assert.equal(verifiedSameContentAtNewerVersion.verified, true);
+  assert.equal(browser.LabKitDataSource.version, storedVersion + 1);
+  verificationVersionOffset = 0;
 
   deferVerification = true;
   const saveWhileEditing = browser.LabKitDataSource.commit({
@@ -2299,6 +2315,7 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   assert.match(source, /EDITOR_LOCKED/);
   assert.match(source, /case "verifySnapshot"/);
   assert.match(source, /function verifySnapshot_/);
+  assert.match(source, /function snapshotDigest_/);
   assert.match(source, /touchEditorLease_/);
   assert.match(source, /releaseEditorLease_/);
   assert.match(source, /editorLeaseMilliseconds: 90000/);
@@ -2457,6 +2474,29 @@ test("Apps Script accepts a chunked snapshot larger than the former save ceiling
 
   assert.equal(backend.LABKIT_CONFIG.maxSnapshotCharacters, 20_000_000);
   assert.doesNotThrow(() => backend.validateSnapshot_(largeSnapshot));
+});
+
+test("Apps Script verification hashes canonical snapshot content", async () => {
+  const source = await read("apps-script/Code.gs");
+  const Utilities = {
+    DigestAlgorithm: { SHA_256: "SHA-256" },
+    Charset: { UTF_8: "UTF-8" },
+    computeDigest(_algorithm, text) {
+      return [...createHash("sha256").update(text, "utf8").digest()]
+        .map((byte) => (byte > 127 ? byte - 256 : byte));
+    },
+  };
+  const backend = new Function(
+    "Utilities",
+    `${source}; return { snapshotDigest_ };`,
+  )(Utilities);
+  const snapshot = { z: [{ b: 2, a: 1 }], a: { d: 4, c: 3 } };
+  const canonical = '{"a":{"c":3,"d":4},"z":[{"a":1,"b":2}]}';
+
+  assert.equal(
+    backend.snapshotDigest_(snapshot),
+    createHash("sha256").update(canonical, "utf8").digest("hex"),
+  );
 });
 
 test("supplier and Gemini adapters normalize official API responses", async () => {

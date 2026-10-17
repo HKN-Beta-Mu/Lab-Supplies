@@ -96,6 +96,19 @@
     return JSON.stringify(canonicalize(value));
   }
 
+  async function sha256(value) {
+    if (!global.crypto?.subtle || !global.TextEncoder) {
+      const error = new Error("This browser cannot perform verified saves because SHA-256 is unavailable.");
+      error.code = "SAVE_VERIFICATION_UNAVAILABLE";
+      throw error;
+    }
+    const bytes = new global.TextEncoder().encode(String(value));
+    const digest = await global.crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
   function sameValue(left, right) {
     return stableSerialize(left) === stableSerialize(right);
   }
@@ -674,30 +687,26 @@
 
     const expectedSnapshot = clone(remote.currentData);
     const expectedSerialized = serializeSharedSnapshot(expectedSnapshot);
+    const expectedDigest = await sha256(expectedSerialized);
+    const expectedVersion = remote.version;
     const idToken = await remote.authUser.getIdToken();
     const result = await callAppsScript({
       action: "verifySnapshot",
       idToken,
       sessionId: browserSessionId,
       sessionLabel: browserSessionLabel,
-      payload: { expectedVersion: remote.version },
+      payload: { expectedVersion, expectedDigest },
     });
-    const stored = result?.state;
-    const storedVersion = Number(stored?.version || 0);
-    const storedSnapshot = stored?.snapshot ? clone(stored.snapshot) : null;
+    const storedVersion = Number(result?.version || 0);
+    const storedDigest = String(result?.storedDigest || "");
     const verified = Boolean(
-      result?.versionMatches
-      && storedSnapshot
-      && storedVersion === remote.version
-      && serializeSharedSnapshot(storedSnapshot) === expectedSerialized
+      result?.digestMatches
+      && storedDigest === expectedDigest
+      && storedVersion >= expectedVersion
     );
 
     if (!verified) {
       const protectedSnapshot = remote.pending || remote.currentData || expectedSnapshot;
-      if (storedSnapshot) {
-        remote.version = storedVersion;
-        remote.baseData = storedSnapshot;
-      }
       // A failed read-back means the submitted browser snapshot is the copy we
       // must protect. Do not treat the mismatched sheet value as authoritative.
       remote.currentData = clone(protectedSnapshot);
@@ -705,13 +714,22 @@
       remote.pendingSerialized = serializeSharedSnapshot(protectedSnapshot);
       writeRemoteDraft(protectedSnapshot);
       setRemoteStatus("Save could not be verified · changes kept safely", "error");
-      const error = new Error("The shared sheet did not match the changes that were just saved. Your changes are still protected in this browser.");
+      const reason = storedVersion < expectedVersion
+        ? `The shared sheet reported version ${storedVersion} instead of ${expectedVersion}`
+        : "The shared sheet checksum did not match the changes that were just saved";
+      const error = new Error(`${reason}. Your changes are still protected in this browser.`);
       error.code = "SAVE_NOT_VERIFIED";
+      error.details = {
+        expectedVersion,
+        storedVersion,
+        versionMatches: result?.versionMatches === true,
+        digestMatches: result?.digestMatches === true,
+      };
       throw error;
     }
 
     remote.version = storedVersion;
-    remote.baseData = storedSnapshot;
+    remote.baseData = clone(expectedSnapshot);
     remote.lastSavedSerialized = expectedSerialized;
     remote.retryCount = 0;
     if (remote.pending || remote.inFlight) {
@@ -719,7 +737,7 @@
       writeRemoteDraft(remote.pending || remote.inFlightSnapshot);
       setRemoteStatus("Verified prior changes · saving newer changes…", "saving");
     } else {
-      remote.currentData = storedSnapshot;
+      remote.currentData = expectedSnapshot;
       clearRemoteDraft();
       setRemoteStatus(
         remote.lastSaveWarning
