@@ -99,6 +99,15 @@ All persistence goes through `window.LabKitDataSource` in
 `src/data-source.js`. That small boundary is intentional: the UI can move from
 local demo persistence to a remote API without rebuilding every screen.
 
+The header's **Save & verify** button flushes every committed change, reads the
+stored snapshot back from the private Sheet, and shows a verified timestamp only
+when that read-back exactly matches. If the read-back fails or differs, the app
+keeps the browser recovery copy and reports that the save was not verified.
+
+Planning-semester kit cards accept a percentage buffer. The app rounds the
+buffer up to a whole kit, displays the resulting pack target, subtracts usable
+packed kits already on hand, and uses the remainder for component and bag demand.
+
 The public Firebase browser configuration lives in
 `src/firebase-config.js`, and `src/firebase.js` initializes Firebase and
 Authentication. Firebase's browser API key identifies the project; it is not a

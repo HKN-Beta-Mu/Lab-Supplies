@@ -199,6 +199,9 @@ function apiRequest(request) {
       case "saveSnapshot":
         requireRole_(user, ["admin"]);
         return apiSuccess_(saveSnapshot_(user, input));
+      case "verifySnapshot":
+        requireRole_(user, ["admin"]);
+        return apiSuccess_(verifySnapshot_(user, input));
       case "suggestSemester":
         requireRole_(user, ["admin"]);
         renewRequiredEditorLease_(user, requireSessionId_(input.sessionId), input.sessionLabel);
@@ -339,6 +342,24 @@ function saveSnapshot_(user, input) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function verifySnapshot_(user, input) {
+  const sessionId = requireSessionId_(input.sessionId);
+  const payload = requirePlainObject_(input.payload, "payload");
+  const expectedVersion = parseNonnegativeInteger_(
+    payload.expectedVersion,
+    "expectedVersion"
+  );
+  renewRequiredEditorLease_(user, sessionId, input.sessionLabel);
+  // This is deliberately a fresh spreadsheet read after saveSnapshot_ has
+  // flushed its writes. The browser compares this stored snapshot with the
+  // exact snapshot it submitted before showing "Saved & verified."
+  const state = readState_();
+  return {
+    state: state,
+    versionMatches: Boolean(state && state.version === expectedVersion),
+  };
 }
 
 function suggestSemester_(input) {

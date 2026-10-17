@@ -13,7 +13,11 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.12\.3"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.16\.1"/);
+  assert.match(html, />\{\{ saveButtonLabel \}\}<\/button>/);
+  assert.match(html, /Buffer \(%\)/);
+  assert.match(html, /Buffer kits/);
+  assert.match(html, /Kits still to pack/);
   assert.match(html, /Kit to edit/);
   assert.match(html, /vInventory/);
   assert.match(html, /\+ Add vendor listing/);
@@ -254,22 +258,27 @@ test("the data model initializes and can create a persisted semester", async () 
     const planningCard = planningView.kitsCards.find((kit) => kit.code === "ECE 2031");
     assert.equal(planningCard.status, "Planning");
     assert.deepEqual(planningCard.planFields.map((field) => field.label), [
-      "Planned demand", "Packed usable", "Faulty / unusable", "Extra packing buffer", "To assemble",
+      "Expected sales", "Buffer (%)", "Buffer kits", "Pack target", "Packed usable on hand", "Faulty / unusable", "Kits still to pack",
     ]);
     let selectedZero = 0;
     planningCard.planFields[0].onFocus({ target: { value: "0", select() { selectedZero += 1; } } });
     assert.equal(selectedZero, 1);
-    assert.equal(planningCard.planFields[4].editable, false);
-    assert.equal(planningCard.planFields[4].readOnly, true);
+    assert.equal(planningCard.planFields[6].editable, false);
+    assert.equal(planningCard.planFields[6].readOnly, true);
     const wirePlanningCard = planningView.kitsCards.find((kit) => kit.name === "Wire Kit");
     assert.deepEqual(wirePlanningCard.planFields.map((field) => field.label), ["Planned quantity"]);
     app.updatePlanningKitMetric("sp27", "ece2031", "purchase", 999);
     assert.equal(app.sales(app.kitMap.ece2031, "sp27").purchase, 10);
     assert.equal(app.bagNeed("bag-ece2031", ["sp27"]).gross, 10);
-    app.updatePlanningKitMetric("sp27", "ece2031", "buffer", 5);
-    assert.equal(app.sales(app.kitMap.ece2031, "sp27").purchase, 15);
-    assert.equal(app.sales(app.kitMap.ece2031, "sp27").total, 25);
-    assert.equal(app.bagNeed("bag-ece2031", ["sp27"]).gross, 15);
+    app.updatePlanningKitMetric("sp27", "ece2031", "bufferPercent", 35);
+    assert.equal(app.sales(app.kitMap.ece2031, "sp27").bufferKits, 7);
+    assert.equal(app.sales(app.kitMap.ece2031, "sp27").total, 27);
+    assert.equal(app.sales(app.kitMap.ece2031, "sp27").remaining, 10);
+    assert.equal(app.sales(app.kitMap.ece2031, "sp27").purchase, 17);
+    assert.equal(app.bagNeed("bag-ece2031", ["sp27"]).gross, 17);
+    assert.deepEqual(app.planningKitTarget(app.termMap.sp27, app.kitMap.ece2031, 360), {
+      demand: 360, bufferPercent: 35, bufferKits: 126, target: 486,
+    });
     assert.ok(planningView.comb.terms.some((term) => term.label === "Spring 2027"));
     assert.ok(!planningView.comb.terms.some((term) => term.label === "Fall 2026"));
     app.openPart("hct00");
@@ -1407,7 +1416,7 @@ test("the data model initializes and can create a persisted semester", async () 
     assert.ok(lastSaved.lineupVersions.length >= 1);
     assert.equal(lastSaved.inventory.packedKits.ece2031.prepared, 238);
     assert.equal(lastSaved.supplierReferenceDataVersion, "2026-10-05-v1");
-    assert.equal(lastSaved.dataSchemaVersion, "2026-10-06-v5");
+    assert.equal(lastSaved.dataSchemaVersion, "2026-10-16-v6");
     assert.equal(lastSaved.bagTypes.length, 4);
     assert.equal(lastSaved.state.priceTestValues, undefined);
     assert.equal(lastSaved.state.priceTestOpen, undefined);
@@ -1840,6 +1849,8 @@ test("persistence adapter exposes the expected provider boundary", async () => {
   assert.match(source, /beforeunload/);
   assert.match(source, /mergeSnapshots/);
   assert.match(source, /flush: flushRemoteChanges/);
+  assert.match(source, /commit: commitChanges/);
+  assert.match(source, /action: "verifySnapshot"/);
 });
 
 test("Apps Script data adapter authenticates and seeds an empty shared sheet", async () => {
@@ -1847,6 +1858,11 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
   const requests = [];
   const scheduled = [];
   const listeners = new Map();
+  let storedSnapshot = null;
+  let storedVersion = 0;
+  let returnMismatchedVerification = false;
+  let deferVerification = false;
+  let releaseVerification = null;
   let successHandler;
   let failureHandler;
   const runner = {
@@ -1875,7 +1891,21 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
             },
           });
         } else if (request.action === "saveSnapshot") {
-          successHandler({ ok: true, data: { version: 1, duplicate: false } });
+          storedSnapshot = request.payload.snapshot;
+          storedVersion = request.payload.expectedVersion + 1;
+          successHandler({ ok: true, data: { version: storedVersion, duplicate: false } });
+        } else if (request.action === "verifySnapshot") {
+          const snapshot = returnMismatchedVerification
+            ? { ...storedSnapshot, orders: [{ id: "different-stored-order", lines: [] }] }
+            : storedSnapshot;
+          const response = { ok: true, data: {
+            state: { version: storedVersion, snapshot },
+            versionMatches: request.payload.expectedVersion === storedVersion,
+          } };
+          if (deferVerification) {
+            const deferredSuccess = successHandler;
+            releaseVerification = () => deferredSuccess(response);
+          } else successHandler(response);
         } else {
           failureHandler(new Error("Unexpected action"));
         }
@@ -1949,6 +1979,47 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
     packedKits: {},
   });
   assert.equal(browser.LabKitDataSource.version, 1);
+
+  const verified = await browser.LabKitDataSource.commit({
+    ...browser.LabKitDataSource.load(),
+    orders: [{ id: "PO-verified", vendor: "Mouser", lines: [] }],
+  });
+  assert.equal(verified.verified, true);
+  assert.equal(requests.at(-1).action, "verifySnapshot");
+  assert.equal(requests.at(-1).payload.expectedVersion, 2);
+  assert.match(browser.LabKitDataSource.statusLabel, /Saved & verified/);
+  assert.equal(browser.LabKitDataSource.hasUnsavedChanges, false);
+
+  deferVerification = true;
+  const saveWhileEditing = browser.LabKitDataSource.commit({
+    ...browser.LabKitDataSource.load(),
+    orders: [{ id: "PO-before-newer-edit", vendor: "Mouser", lines: [] }],
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(releaseVerification);
+  browser.LabKitDataSource.save({
+    ...browser.LabKitDataSource.load(),
+    orders: [{ id: "PO-newer-edit", vendor: "Newark", lines: [] }],
+  });
+  deferVerification = false;
+  releaseVerification();
+  const verifiedNewerEdit = await saveWhileEditing;
+  assert.equal(verifiedNewerEdit.verified, true);
+  assert.equal(storedSnapshot.orders[0].id, "PO-newer-edit");
+  assert.equal(browser.LabKitDataSource.load().orders[0].id, "PO-newer-edit");
+  assert.equal(browser.LabKitDataSource.hasUnsavedChanges, false);
+
+  returnMismatchedVerification = true;
+  await assert.rejects(
+    browser.LabKitDataSource.commit({
+      ...browser.LabKitDataSource.load(),
+      orders: [{ id: "PO-must-not-be-lost", vendor: "DigiKey", lines: [] }],
+    }),
+    (error) => error.code === "SAVE_NOT_VERIFIED",
+  );
+  assert.equal(browser.LabKitDataSource.hasUnsavedChanges, true);
+  assert.equal(browser.LabKitDataSource.load().orders[0].id, "PO-must-not-be-lost");
+  assert.match(browser.LabKitDataSource.statusLabel, /could not be verified/);
 });
 
 test("Apps Script data adapter rebases and retries without discarding an edit", async () => {
@@ -2203,6 +2274,8 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   assert.match(source, /LockService\.getScriptLock\(\)/);
   assert.match(source, /VERSION_CONFLICT/);
   assert.match(source, /EDITOR_LOCKED/);
+  assert.match(source, /case "verifySnapshot"/);
+  assert.match(source, /function verifySnapshot_/);
   assert.match(source, /touchEditorLease_/);
   assert.match(source, /releaseEditorLease_/);
   assert.match(source, /editorLeaseMilliseconds: 90000/);

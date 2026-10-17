@@ -255,6 +255,9 @@
     syncInFlight: false,
     status: "Connecting to shared sheet…",
   };
+  let localStatus = readEnvelope()
+    ? "Saved on this device"
+    : "No saved changes on this device";
 
   function readRemoteDraft(uid) {
     try {
@@ -657,6 +660,113 @@
     return !hasUnsavedRemoteChanges();
   }
 
+  async function verifyRemoteChanges() {
+    if (!remote.ready || !remote.access.canEdit || !remote.authUser) {
+      const error = new Error("The shared sheet is not ready for a verified save.");
+      error.code = "SAVE_NOT_READY";
+      throw error;
+    }
+
+    const expectedSnapshot = clone(remote.currentData);
+    const expectedSerialized = serializeSharedSnapshot(expectedSnapshot);
+    const idToken = await remote.authUser.getIdToken();
+    const result = await callAppsScript({
+      action: "verifySnapshot",
+      idToken,
+      sessionId: browserSessionId,
+      sessionLabel: browserSessionLabel,
+      payload: { expectedVersion: remote.version },
+    });
+    const stored = result?.state;
+    const storedVersion = Number(stored?.version || 0);
+    const storedSnapshot = stored?.snapshot ? clone(stored.snapshot) : null;
+    const verified = Boolean(
+      result?.versionMatches
+      && storedSnapshot
+      && storedVersion === remote.version
+      && serializeSharedSnapshot(storedSnapshot) === expectedSerialized
+    );
+
+    if (!verified) {
+      const protectedSnapshot = remote.pending || remote.currentData || expectedSnapshot;
+      if (storedSnapshot) {
+        remote.version = storedVersion;
+        remote.baseData = storedSnapshot;
+      }
+      // A failed read-back means the submitted browser snapshot is the copy we
+      // must protect. Do not treat the mismatched sheet value as authoritative.
+      remote.currentData = clone(protectedSnapshot);
+      remote.pending = protectedSnapshot;
+      remote.pendingSerialized = serializeSharedSnapshot(protectedSnapshot);
+      writeRemoteDraft(protectedSnapshot);
+      setRemoteStatus("Save could not be verified · changes kept safely", "error");
+      const error = new Error("The shared sheet did not match the changes that were just saved. Your changes are still protected in this browser.");
+      error.code = "SAVE_NOT_VERIFIED";
+      throw error;
+    }
+
+    remote.version = storedVersion;
+    remote.baseData = storedSnapshot;
+    remote.lastSavedSerialized = expectedSerialized;
+    remote.retryCount = 0;
+    if (remote.pending || remote.inFlight) {
+      remote.currentData = clone(remote.pending || remote.inFlightSnapshot);
+      writeRemoteDraft(remote.pending || remote.inFlightSnapshot);
+      setRemoteStatus("Verified prior changes · saving newer changes…", "saving");
+    } else {
+      remote.currentData = storedSnapshot;
+      clearRemoteDraft();
+      setRemoteStatus(`Saved & verified · shared sheet · ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`, "verified");
+    }
+    return { ok: true, verified: true, version: storedVersion };
+  }
+
+  async function commitChanges(data) {
+    if (!isAppsScript) {
+      if (!writeEnvelope(data)) {
+        const error = new Error("This browser could not save the LabKit data on this device.");
+        error.code = "LOCAL_SAVE_FAILED";
+        throw error;
+      }
+      const stored = readEnvelope();
+      if (!stored || stableSerialize(stored.data) !== stableSerialize(data)) {
+        const error = new Error("The saved copy on this device did not match the current LabKit data.");
+        error.code = "LOCAL_SAVE_NOT_VERIFIED";
+        throw error;
+      }
+      localStatus = `Saved & verified on this device · ${new Date(stored.savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+      emit("labkit:data-status", { status: localStatus, phase: "verified" });
+      return { ok: true, verified: true, savedAt: stored.savedAt };
+    }
+
+    if (!remote.access.canEdit) {
+      const error = new Error("This session is view-only. Take over editing before saving changes.");
+      error.code = "EDITOR_LOCKED";
+      throw error;
+    }
+    if (!remote.ready) {
+      const error = new Error("The shared sheet is still connecting. Try Save again in a moment.");
+      error.code = "SAVE_NOT_READY";
+      throw error;
+    }
+
+    adapter.save(data);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const saved = await flushRemoteChanges();
+      if (!saved) {
+        const error = new Error("The shared sheet could not save every pending change. The recovery copy remains in this browser.");
+        error.code = "REMOTE_SAVE_FAILED";
+        throw error;
+      }
+      const result = await verifyRemoteChanges();
+      if (!hasUnsavedRemoteChanges()) return result;
+    }
+
+    const error = new Error("New edits were made while Save was verifying. Press Save again after the current edit is complete.");
+    error.code = "NEWER_CHANGES_PENDING";
+    throw error;
+  }
+
   async function connectRemote(user) {
     if (!isAppsScript) return { user: null, state: null };
     if (!user) throw new Error("Sign in before loading the shared sheet.");
@@ -855,7 +965,7 @@
     schemaVersion: SCHEMA_VERSION,
 
     get statusLabel() {
-      return isAppsScript ? remote.status : "Saved on this device";
+      return isAppsScript ? remote.status : localStatus;
     },
 
     get resetLabel() {
@@ -982,6 +1092,8 @@
     takeOver: takeOverRemote,
 
     flush: flushRemoteChanges,
+
+    commit: commitChanges,
 
     connect: connectRemote,
     disconnect: disconnectRemote,

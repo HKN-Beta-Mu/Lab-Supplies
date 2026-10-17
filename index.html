@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-  <meta name="labkit-build" content="2026.10.12.3">
+  <meta name="labkit-build" content="2026.10.16.1">
 <title>LabKit · Component Procurement</title>
 <link rel="stylesheet" href="./src/auth.css">
 <script type="module" src="./src/firebase.js"></script>
@@ -66,7 +66,7 @@
 
 <aside id="labkit-auth-session" class="labkit-auth-session" aria-label="Signed-in account" hidden>
   <span id="labkit-session-user"></span>
-  <span class="labkit-build-id">v2026.10.12.3</span>
+  <span class="labkit-build-id">v2026.10.16.1</span>
   <button id="labkit-session-sign-out" type="button">Sign out</button>
 </aside>
 
@@ -173,6 +173,7 @@
             <select class="input" aria-label="Semester stage" value="{{ hdr.status }}" onChange="{{ hdr.onStatus }}" style="width:125px;min-height:34px"><template data-dc-control="for" list="{{ hdr.statuses }}" as="s" hint-placeholder-count="4"><option value="{{ s }}">{{ s }}</option></template></select>
             <button class="btn btn-ghost" onClick="{{ hdr.deleteSemester }}" style="{{ hdr.deleteStyle }}">Delete plan</button>
           </sc-if>
+          <button class="btn btn-primary app-save-button" type="button" onClick="{{ saveChanges }}" style="{{ saveButtonStyle }}">{{ saveButtonLabel }}</button>
           <button class="btn btn-secondary" type="button" onClick="{{ openHistoryPanel }}">History</button>
           <button class="btn btn-secondary app-sign-out" type="button" onClick="{{ signOutUser }}">Sign out</button>
           <template data-dc-control="for" list="{{ hdr.stats }}" as="st" hint-placeholder-count="4">
@@ -230,7 +231,7 @@
               </div>
               <button onClick="{{ k.open }}" style="border:0;background:transparent;padding:0;text-align:left;cursor:pointer;font-family:var(--font-heading);font-weight:800;font-size:18px;line-height:1.15;color:var(--color-text)">{{ k.name }}</button>
               <div style="border-top:1px solid var(--color-divider)">
-                <template data-dc-control="for" list="{{ k.planFields }}" as="f" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:1fr 86px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--color-divider)"><label title="{{ f.help }}" style="font-size:11.5px;color:{{ f.color }}">{{ f.label }}</label><sc-if value="{{ f.editable }}" hint-placeholder-val="{{ true }}"><input class="input" type="number" min="0" value="{{ f.value }}" onFocus="{{ f.onFocus }}" onClick="{{ f.onFocus }}" onChange="{{ f.onChange }}" style="min-height:30px;text-align:right"></sc-if><sc-if value="{{ f.readOnly }}" hint-placeholder-val="{{ false }}"><div title="Calculated automatically" style="min-height:30px;display:flex;align-items:center;justify-content:flex-end;padding:0 10px;border:1px solid var(--color-divider);background:var(--color-neutral-100);font-weight:700;color:{{ f.color }}">{{ f.value }}</div></sc-if></div></template>
+                <template data-dc-control="for" list="{{ k.planFields }}" as="f" hint-placeholder-count="7"><div style="display:grid;grid-template-columns:1fr 86px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--color-divider)"><label title="{{ f.help }}" style="font-size:11.5px;color:{{ f.color }}">{{ f.label }}</label><sc-if value="{{ f.editable }}" hint-placeholder-val="{{ true }}"><input class="input" type="number" min="0" step="{{ f.step }}" value="{{ f.value }}" onFocus="{{ f.onFocus }}" onClick="{{ f.onFocus }}" onChange="{{ f.onChange }}" style="min-height:30px;text-align:right"></sc-if><sc-if value="{{ f.readOnly }}" hint-placeholder-val="{{ false }}"><div title="{{ f.help }}" style="min-height:30px;display:flex;align-items:center;justify-content:flex-end;padding:0 10px;border:1px solid var(--color-divider);background:var(--color-neutral-100);font-weight:700;color:{{ f.color }}">{{ f.value }}</div></sc-if></div></template>
               </div>
               <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-top:2px">
                 <div class="field" style="width:105px"><label>{{ k.versionLabel }} price</label><input class="input" type="number" min="0" step="0.01" placeholder="—" value="{{ k.salePrice }}" onChange="{{ k.onSalePrice }}" style="{{ k.priceInputStyle }}"></div>
@@ -1419,6 +1420,7 @@ class Component extends DCLogic {
       historyPanel:false, kitForm:false, kitDraft:{code:'',name:'',individual:false},
       priceTestOpen:false, priceTestValues:{},
       orderForm:false, orderLinePart:'hct00', orderLineQty:1, orderLineUnit:0,
+      manualSaveBusy:false,
     };
     this.buildData();
     this.buildHistory();
@@ -1538,17 +1540,15 @@ class Component extends DCLogic {
     this.forceUpdate();
   }
 
-  persistData(){
-    if(!window.LabKitDataSource)return;
-    if(window.LabKitDataSource.kind==='apps-script'&&!this._dataHydrated)return;
-    const {toast,partId,modalTab,sidebarOpen,orderOpen,semesterForm,semesterSuggestion,semesterSuggesting,semesterError,quoteLoading,quoteMessage,historyPanel,picker,priceChecks,receiveDraft,kitForm,supplierFormOpen,supplierEditingId,supplierDraft,supplierAiBusy,supplierAiMessage,flagDraft,specDraftKey,specDraftValue,aiBusy,aiMessage,aiDescriptionDraft,aiReplacementResults,forecastAiBusy,forecastAiMessage,priceTestOpen,priceTestValues,...stableState}=this.state;
-    window.LabKitDataSource.save({
+  persistentSnapshot(){
+    const {toast,partId,modalTab,sidebarOpen,orderOpen,semesterForm,semesterSuggestion,semesterSuggesting,semesterError,quoteLoading,quoteMessage,historyPanel,picker,priceChecks,receiveDraft,kitForm,supplierFormOpen,supplierEditingId,supplierDraft,supplierAiBusy,supplierAiMessage,flagDraft,specDraftKey,specDraftValue,aiBusy,aiMessage,aiDescriptionDraft,aiReplacementResults,forecastAiBusy,forecastAiMessage,priceTestOpen,priceTestValues,manualSaveBusy,...stableState}=this.state;
+    return {
       historicalDataVersion:this.historicalDataVersion,
       orderDataVersion:'real-orders-v1',
       supplierReferenceDataVersion:this.supplierReferenceDataVersion,
       cartImportVersion:this.cartImportVersion||null,
       cartImportApplied:this.cartImportApplied||[],
-      dataSchemaVersion:'2026-10-06-v5',
+      dataSchemaVersion:'2026-10-16-v6',
       state:stableState,
       catalog:this.catalog,
       kits:this.kits,
@@ -1561,7 +1561,31 @@ class Component extends DCLogic {
       inventory:this.inventory,
       supplierQuotes:this.supplierQuotes,
       alternatives:this._alts||{},
-    });
+    };
+  }
+
+  persistData(){
+    if(!window.LabKitDataSource)return false;
+    if(window.LabKitDataSource.kind==='apps-script'&&!this._dataHydrated)return false;
+    return window.LabKitDataSource.save(this.persistentSnapshot());
+  }
+
+  async saveAllChanges(){
+    const source=window.LabKitDataSource;
+    if(!source||this.state.manualSaveBusy)return;
+    if(source.kind==='apps-script'&&!this._dataHydrated){this.flash('The shared sheet is still loading. Try Save again in a moment.');return;}
+    if(source.canEdit===false){this.flash('This session is view-only. Take over editing before saving.');return;}
+    const snapshot=this.persistentSnapshot();
+    this.setState({manualSaveBusy:true});
+    try{
+      const result=source.commit?await source.commit(snapshot):(source.save(snapshot)&&(!source.flush||await source.flush())?{verified:false}:null);
+      if(!result)throw new Error('The save did not finish.');
+      this.flash(result.verified?'All changes saved and verified':'All changes saved');
+    }catch(error){
+      this.flash(error&&error.message||'Save failed. Your recovery copy is still in this browser.');
+    }finally{
+      this.setState({manualSaveBusy:false});
+    }
   }
 
   componentDidMount(){
@@ -1803,6 +1827,14 @@ class Component extends DCLogic {
     });
     if(!Array.isArray(this.lineupVersions)||!this.lineupVersions.length)this.lineupVersions=[{id:'lineup-v1',number:1,label:'Imported lineup',kitIds:this.kits.filter(k=>k.active!==false).map(k=>k.id),createdAt:new Date().toISOString(),source:'Migration'}];
     this.terms.forEach(t=>{t.kitVersions=t.kitVersions||{};t.kitOfferings=t.kitOfferings||{};t.salePrices=t.salePrices||{};t.lineupVersionId=t.lineupVersionId||this.lineupVersions[0].id;const planning=(this.state.statusOv&&this.state.statusOv[t.id]||t.status)==='Planning';if(planning){t.actualPending=true;t.plannedKits=t.plannedKits||{};t.planningKitAdjustments=t.planningKitAdjustments||{};Object.values(t.planningKitAdjustments).forEach(row=>{if(row&&typeof row==='object')delete row.purchase;});}this.kits.forEach(k=>{if(!t.kitVersions[k.id])t.kitVersions[k.id]=k.latestVersionId;if(t.kitOfferings[k.id]===undefined)t.kitOfferings[k.id]=true;if(planning&&t.plannedKits[k.id]===undefined)t.plannedKits[k.id]=0;});if(planning)t.sales=this.kits.reduce((sum,k)=>sum+(t.kitOfferings[k.id]===false?0:Math.max(0,Number(t.plannedKits[k.id])||0)),0);});
+    // Older plans stored the buffer as a fixed kit count. Convert it once to
+    // the equivalent percentage so existing targets do not disappear.
+    this.terms.forEach(t=>Object.entries(t.planningKitAdjustments||{}).forEach(([kitId,row])=>{
+      if(!row||typeof row!=='object'||row.bufferPercent!==undefined)return;
+      const demand=Math.max(0,Number((t.plannedKits||{})[kitId])||0),legacy=Math.max(0,Number(row.buffer)||0);
+      row.bufferPercent=demand>0&&legacy>0?Math.round((legacy/demand)*10000)/100:0;
+      delete row.buffer;
+    }));
     if(this.termMap.su26)this.termMap.su26.kitOfferings.ece3043=false;
     if(!Array.isArray(this.changeLog))this.changeLog=[];
     this.kits.forEach(k=>{
@@ -1870,6 +1902,12 @@ class Component extends DCLogic {
     if((this.status(termId)==='Planning'||t.actualPending===true)&&t.plannedKits&&t.plannedKits[kit.id]!==undefined)return Math.max(0,Number(t.plannedKits[kit.id])||0);
     return Math.max(0,Number(kit.seriesKey?(t.items&&t.items[kit.seriesKey]):(t.kits&&t.kits[kit.code]))||0);
   }
+  planningKitTarget(term,kit,demandValue){
+    const demand=Math.max(0,Number(demandValue)||0),adjustment=term&&term.planningKitAdjustments&&term.planningKitAdjustments[kit.id]||{};
+    const bufferPercent=kit.individual?0:Math.max(0,Number(adjustment.bufferPercent)||0);
+    const bufferKits=kit.individual?0:Math.max(0,Math.ceil((demand*bufferPercent/100)-1e-9)),target=demand+bufferKits;
+    return{demand,bufferPercent,bufferKits,target};
+  }
   toggleFavorite(kit){const before=Boolean(kit.fav);kit.fav=!before;this.recordChange('edit','kit-favorite',kit.id,before,kit.fav,(kit.fav?'Favorited ':'Un-favorited ')+kit.code);this.forceUpdate();this.flash(kit.fav?'Added to favorites':'Removed from favorites');}
   updateTermKitUnits(termId,kitId,value){
     const term=this.termMap[termId],kit=this.kitMap[kitId];if(!term||!kit)return;
@@ -1879,29 +1917,29 @@ class Component extends DCLogic {
     else if(kit.seriesKey){term.items=term.items||{};term.items[kit.seriesKey]=units;}
     else{term.kits=term.kits||{};term.kits[kit.code]=units;}
     term.sales=this.kits.reduce((sum,k)=>sum+this.rawKitSales(k,termId),0);
-    if(term.actualPending===true&&term.inventoryApplied)term.inventoryAllocation=this.buildInventoryAllocation(term.plannedKits||{},true,term.kitOfferings);
+    if(term.actualPending===true&&term.inventoryApplied)this.refreshPlanningInventoryAllocation(term);
     this.recordChange('edit','term',termId,before,term,'Changed '+kit.code+' sales in '+term.label+' to '+units);
     this.forceUpdate();
   }
   updatePlanningKitMetric(termId,kitId,key,value){
     const term=this.termMap[termId],kit=this.kitMap[kitId];if(!term||!kit||this.status(termId)!=='Planning')return;
     if(key==='demand'){this.updateTermKitUnits(termId,kitId,value);return;}
-    if(key==='purchase')return;
-    const before=this.clone(term),n=Math.max(0,parseInt(value)||0);term.planningKitAdjustments=term.planningKitAdjustments||{};const row=term.planningKitAdjustments[kitId]=term.planningKitAdjustments[kitId]||{};row[key]=n;
+    if(key==='purchase'||key==='bufferKits'||key==='target')return;
+    const before=this.clone(term),raw=key==='bufferPercent'?parseFloat(value):parseInt(value),n=Math.max(0,Number.isFinite(raw)?raw:0);term.planningKitAdjustments=term.planningKitAdjustments||{};const row=term.planningKitAdjustments[kitId]=term.planningKitAdjustments[kitId]||{};row[key]=key==='bufferPercent'?Math.round(n*100)/100:n;if(key==='bufferPercent')delete row.buffer;
     this.refreshPlanningInventoryAllocation(term);
-    this.recordChange('edit','term',termId,before,term,'Changed '+kit.code+' '+({packed:'packed kits',faulty:'faulty kits',buffer:'extra packing buffer',purchase:'kits to assemble'}[key]||key)+' in '+term.label+' to '+n);this.forceUpdate();
+    this.recordChange('edit','term',termId,before,term,'Changed '+kit.code+' '+({packed:'packed kits',faulty:'faulty kits',bufferPercent:'packing buffer percentage'}[key]||key)+' in '+term.label+' to '+row[key]);this.forceUpdate();
   }
   refreshPlanningInventoryAllocation(term){
     if(!term||!term.inventoryApplied)return;
     const allocation=term.inventoryAllocation=term.inventoryAllocation||{components:{},packedKits:{},createdAt:new Date().toISOString()};allocation.packedKits=allocation.packedKits||{};allocation.components={};
-    this.kits.forEach(k=>{allocation.packedKits[k.id]=this.sales(k,term.id).remaining||0;});
+    this.kits.forEach(k=>{const adjustment=term.planningKitAdjustments&&term.planningKitAdjustments[k.id]||{},target=this.planningKitTarget(term,k,(term.plannedKits||{})[k.id]).target,autoPacked=Math.min(target,this.availableInventory('kit',k.id));allocation.packedKits[k.id]=k.individual?autoPacked:(adjustment.packed===undefined?autoPacked:Math.max(0,Number(adjustment.packed)||0));});
     this.catalog.forEach(p=>{let raw=0;this.kits.forEach(k=>{const it=this.kitItemsForTerm(k,term.id).find(i=>i.p===p.id);if(it)raw+=it.q*this.sales(k,term.id).purchase;});const needed=this.componentPurchaseQuantity(p.id,raw);allocation.components[p.id]=Math.min(needed,this.availableInventory('component',p.id));});
   }
   applyForecastToPlan(termId,kitId){
     const term=this.termMap[termId];if(!term||this.status(termId)!=='Planning'){this.flash('Forecasts can only be applied to a Planning semester');return;}
     const targets=kitId?[this.kitMap[kitId]]:this.kits.filter(k=>this.isKitOffered(termId,k.id)),before=this.clone(term);term.plannedKits=term.plannedKits||{};
     targets.filter(Boolean).forEach(k=>{const f=this.forecastForKit(k,term);if(Number.isFinite(f.value))term.plannedKits[k.id]=Math.max(0,Math.round(f.value));});
-    term.actualPending=true;term.sales=this.kits.reduce((sum,k)=>sum+(this.isKitOffered(termId,k.id)?Math.max(0,Number(term.plannedKits[k.id])||0):0),0);if(term.inventoryApplied)term.inventoryAllocation=this.buildInventoryAllocation(term.plannedKits,true,term.kitOfferings);
+    term.actualPending=true;term.sales=this.kits.reduce((sum,k)=>sum+(this.isKitOffered(termId,k.id)?Math.max(0,Number(term.plannedKits[k.id])||0):0),0);if(term.inventoryApplied)this.refreshPlanningInventoryAllocation(term);
     this.recordChange('edit','term',termId,before,term,(kitId?'Applied one kit forecast':'Applied all kit forecasts')+' to '+term.label);this.forceUpdate();
   }
   updateTermKitPrice(termId,kitId,value){
@@ -1950,7 +1988,7 @@ class Component extends DCLogic {
     const other=driver.keys.slice(1).reduce((sum,key)=>sum+(Number(term.cls&&term.cls[key])||0),0),total=Math.max(0,parseInt(value)||0);
     this.updateTermCourseSize(termId,driver.keys[0],Math.max(0,total-other));
   }
-  toggleTermKitOffering(termId,kitId){const term=this.termMap[termId],kit=this.kitMap[kitId];if(!term||!kit||!this.confirmTermEdit(term,'change whether '+kit.code+' is offered'))return;const before=this.clone(term);term.kitOfferings=term.kitOfferings||{};term.kitOfferings[kitId]=!this.isKitOffered(termId,kitId);if(!term.kitOfferings[kitId]){if(term.plannedKits)term.plannedKits[kitId]=0;if(kit.seriesKey&&term.items)term.items[kit.seriesKey]=0;else if(term.kits)term.kits[kit.code]=0;}term.sales=this.kits.reduce((sum,k)=>sum+this.rawKitSales(k,termId),0);if(term.actualPending===true&&term.inventoryApplied)term.inventoryAllocation=this.buildInventoryAllocation(term.plannedKits||{},true,term.kitOfferings);this.recordChange('edit','term',termId,before,term,(term.kitOfferings[kitId]?'Enabled ':'Marked not offered: ')+kit.code+' in '+term.label);this.forceUpdate();}
+  toggleTermKitOffering(termId,kitId){const term=this.termMap[termId],kit=this.kitMap[kitId];if(!term||!kit||!this.confirmTermEdit(term,'change whether '+kit.code+' is offered'))return;const before=this.clone(term);term.kitOfferings=term.kitOfferings||{};term.kitOfferings[kitId]=!this.isKitOffered(termId,kitId);if(!term.kitOfferings[kitId]){if(term.plannedKits)term.plannedKits[kitId]=0;if(kit.seriesKey&&term.items)term.items[kit.seriesKey]=0;else if(term.kits)term.kits[kit.code]=0;}term.sales=this.kits.reduce((sum,k)=>sum+this.rawKitSales(k,termId),0);if(term.actualPending===true&&term.inventoryApplied)this.refreshPlanningInventoryAllocation(term);this.recordChange('edit','term',termId,before,term,(term.kitOfferings[kitId]?'Enabled ':'Marked not offered: ')+kit.code+' in '+term.label);this.forceUpdate();}
   // What a semester will actually pay per piece for a part: the part really bought (the replacement if one is chosen), at the vendor or split the plan
   // uses, before shipping and tax. Wire is bought by the spool but used by the cut, so its price is spread over the cuts a spool yields.
   chosenSupply(part,termId,rawQty){
@@ -2092,7 +2130,7 @@ class Component extends DCLogic {
     return{kit,version};
   }
   addKit(){const draft=this.state.kitDraft||{},code=String(draft.code||'').trim(),name=String(draft.name||'').trim();if(!code||!name){this.flash('Enter both a kit code and name');return;}const id='kit-'+this.hash(code+name+Date.now()).toString(36),{version}=this.createKit({id,code,name,individual:Boolean(draft.individual)});this.setState({kitForm:false,kitDraft:{code:'',name:'',individual:false},scope:'global',gview:'build',builderKitId:id,builderTargetTermId:'future'});this.startKitEdit(id,'future',version.id);}
-  toggleKitActive(kitId){const kit=this.kitMap[kitId];if(!kit)return;const next=kit.active===false;if(!window.confirm((next?'Reactivate ':'Decommission ')+kit.code+'? Historical semesters and versions will be kept.'))return;const before={kits:this.clone(this.kits),kitVersions:this.clone(this.kitVersions),lineupVersions:this.clone(this.lineupVersions),terms:this.clone(this._terms)};kit.active=next;const lineup=this.createLineupVersion((next?'Reactivated ':'Decommissioned ')+kit.code);this.terms.filter(t=>this.status(t.id)==='Planning').forEach(t=>{t.kitOfferings=t.kitOfferings||{};t.kitOfferings[kit.id]=next;if(!next&&t.plannedKits)t.plannedKits[kit.id]=0;t.lineupVersionId=lineup.id;t.sales=this.kits.reduce((sum,k)=>sum+this.rawKitSales(k,t.id),0);if(t.inventoryApplied)t.inventoryAllocation=this.buildInventoryAllocation(t.plannedKits||{},true,t.kitOfferings);});this.recordChange('edit','lineup',kit.id,before,{kits:this.kits,kitVersions:this.kitVersions,lineupVersions:this.lineupVersions,terms:this._terms},(next?'Reactivated ':'Decommissioned ')+kit.code);this.forceUpdate();}
+  toggleKitActive(kitId){const kit=this.kitMap[kitId];if(!kit)return;const next=kit.active===false;if(!window.confirm((next?'Reactivate ':'Decommission ')+kit.code+'? Historical semesters and versions will be kept.'))return;const before={kits:this.clone(this.kits),kitVersions:this.clone(this.kitVersions),lineupVersions:this.clone(this.lineupVersions),terms:this.clone(this._terms)};kit.active=next;const lineup=this.createLineupVersion((next?'Reactivated ':'Decommissioned ')+kit.code);this.terms.filter(t=>this.status(t.id)==='Planning').forEach(t=>{t.kitOfferings=t.kitOfferings||{};t.kitOfferings[kit.id]=next;if(!next&&t.plannedKits)t.plannedKits[kit.id]=0;t.lineupVersionId=lineup.id;t.sales=this.kits.reduce((sum,k)=>sum+this.rawKitSales(k,t.id),0);if(t.inventoryApplied)this.refreshPlanningInventoryAllocation(t);});this.recordChange('edit','lineup',kit.id,before,{kits:this.kits,kitVersions:this.kitVersions,lineupVersions:this.lineupVersions,terms:this._terms},(next?'Reactivated ':'Decommissioned ')+kit.code);this.forceUpdate();}
   startKitEdit(kitId,targetTermId,versionId){
     const kit=this.kitMap[kitId];if(!kit)return;
     const target=targetTermId||'future',term=target==='future'?null:this.termMap[target];
@@ -2168,8 +2206,8 @@ class Component extends DCLogic {
     if(t.id==='sp26') return kit.sp26;
     if(planning||(t.actualPending===true&&t.plannedKits&&t.plannedKits[kit.id]!==undefined)){
       const demand=Math.max(0,Number(t.plannedKits[kit.id])||0);
-      const adjustment=t.planningKitAdjustments&&t.planningKitAdjustments[kit.id]||{},buffer=kit.individual?0:Math.max(0,Number(adjustment.buffer)||0),target=demand+buffer,autoPacked=t.inventoryApplied&&t.inventoryAllocation&&t.inventoryAllocation.packedKits?Math.min(target,Math.max(0,Number(t.inventoryAllocation.packedKits[kit.id])||0)):0,packed=kit.individual?autoPacked:(adjustment.packed===undefined?autoPacked:Math.max(0,Number(adjustment.packed)||0)),faulty=kit.individual?0:(adjustment.faulty===undefined?0:Math.max(0,Number(adjustment.faulty)||0)),purchase=Math.max(0,target-packed);
-      return {sold:demand,summer:0,remaining:packed,faulty,buffer,fallNeed:demand,summerNeed:0,total:target,purchase,planned:true};
+      const adjustment=t.planningKitAdjustments&&t.planningKitAdjustments[kit.id]||{},targetInfo=this.planningKitTarget(t,kit,demand),target=targetInfo.target,autoPacked=t.inventoryApplied&&t.inventoryAllocation&&t.inventoryAllocation.packedKits?Math.min(target,Math.max(0,Number(t.inventoryAllocation.packedKits[kit.id])||0)):0,packed=kit.individual?autoPacked:(adjustment.packed===undefined?autoPacked:Math.max(0,Number(adjustment.packed)||0)),faulty=kit.individual?0:(adjustment.faulty===undefined?0:Math.max(0,Number(adjustment.faulty)||0)),purchase=Math.max(0,target-packed);
+      return {sold:demand,summer:0,remaining:packed,faulty,buffer:targetInfo.bufferKits,bufferKits:targetInfo.bufferKits,bufferPercent:targetInfo.bufferPercent,fallNeed:demand,summerNeed:0,total:target,purchase,planned:true};
     }
     const sold=kit.seriesKey?(t.items&&t.items[kit.seriesKey]||0):(t.kits&&t.kits[kit.code]!==undefined?t.kits[kit.code]:Math.round((kit.sp26.sold||0)*t.factor));
     return {sold,summer:0,remaining:null,faulty:null,fallNeed:0,summerNeed:0,total:sold,purchase:0,inventoryKnown:false};
@@ -3014,13 +3052,15 @@ class Component extends DCLogic {
     // kits cards
     const kitsCards=this.kits.map(k=>{
       const s=this.sales(k),items=this.kitItemsForTerm(k,sem.id),version=this.versionFor(k.id,sem.id),offered=this.isKitOffered(sem.id,k.id),price=this.kitSalePrice(k,sem.id),cost=this.kitCostBreakdown(k,sem.id),revenue=price===null?'—':this.m(s.sold*price),profit=price===null?'—':this.m(s.sold*(price-cost.total)),unitPriceLabel=price===null?'Set a price':this.m(price),costPerUnit=this.m(cost.total)+(cost.estimated||cost.missing?' (est.)':''),profitPerUnit=price===null?'—':this.m(price-cost.total),profitStyle=price!==null&&price-cost.total<0?'color:var(--color-danger)':'color:var(--color-text)',suggested=Number(sem.suggestedKits&&sem.suggestedKits[k.id])||0,known=s.inventoryKnown!==false,editable=this.status(sem.id)==='Planning'&&offered;
-      const inputField=(label,value,color,key)=>({label,value,color,editable,readOnly:!editable,onFocus:e=>this.focusNumberInput(e),onChange:e=>this.updatePlanningKitMetric(sem.id,k.id,key,e.target.value)});
+      const inputField=(label,value,color,key,help='',step='1')=>({label,value,color,editable,readOnly:!editable,help,step,onFocus:e=>this.focusNumberInput(e),onChange:e=>this.updatePlanningKitMetric(sem.id,k.id,key,e.target.value)});
       const planFields=k.individual?[inputField(s.planned?'Planned quantity':'Units sold',s.sold,'var(--color-neutral-700)','demand')]:[
-        inputField(s.planned?'Planned demand':'Units sold',s.sold,'var(--color-neutral-700)','demand'),
-        inputField(s.planned?'Packed usable':'On hand',known?s.remaining:'','var(--color-neutral-700)','packed'),
-        inputField('Faulty / unusable',known?s.faulty:'','var(--color-neutral-700)','faulty'),
-        ...(s.planned?[{...inputField('Extra packing buffer',s.buffer||0,'var(--color-neutral-700)','buffer'),help:'Extra finished kits to prepare beyond forecast demand.'}]:[]),
-        {label:s.planned?'To assemble':'To buy',help:'Calculated as demand + extra buffer − packed usable.',value:known?s.purchase:'',color:'var(--color-accent-700)',editable:false,readOnly:true,onFocus:()=>{},onChange:()=>{}},
+        inputField(s.planned?'Expected sales':'Units sold',s.sold,'var(--color-neutral-700)','demand','How many kits you expect to sell.'),
+        ...(s.planned?[inputField('Buffer (%)',s.bufferPercent||0,'var(--color-neutral-700)','bufferPercent','Percentage to pack above expected sales. For example, 35 means 35% extra.','0.1')]:[]),
+        ...(s.planned?[{label:'Buffer kits',help:'Expected sales × buffer percentage, rounded up so the buffer is never short.',value:this.num(s.bufferKits||0),color:'var(--color-neutral-700)',editable:false,readOnly:true,step:'1',onFocus:()=>{},onChange:()=>{}}]:[]),
+        ...(s.planned?[{label:'Pack target',help:'Expected sales + buffer kits.',value:this.num(s.total),color:'var(--color-neutral-700)',editable:false,readOnly:true,step:'1',onFocus:()=>{},onChange:()=>{}}]:[]),
+        inputField(s.planned?'Packed usable on hand':'On hand',known?s.remaining:'','var(--color-neutral-700)','packed','Completed kits already available after reservations and faulty kits are excluded.'),
+        inputField('Faulty / unusable',known?s.faulty:'','var(--color-neutral-700)','faulty','Shown for reference; packed usable should include only usable kits.'),
+        {label:s.planned?'Kits still to pack':'To buy',help:'Pack target − packed usable on hand.',value:known?s.purchase:'',color:'var(--color-accent-700)',editable:false,readOnly:true,step:'1',onFocus:()=>{},onChange:()=>{}},
       ];
       return {code:k.individual?'GENERAL ITEM':k.code,name:k.name,status:offered?(s.planned?'Planning':k.individual?'General item':'Class kit'):'Not offered',tagClass:k.individual?'tag-outline':'tag-accent',soldLabel:s.planned?'Demand':'Sold',remainingLabel:s.planned?'Packed kits':'On hand',sold:this.num(s.sold),remaining:known?this.num(s.remaining):'—',faulty:known?this.num(s.faulty):'—',purchase:known?this.num(s.purchase):'—',planFields,itemsLabel:items.length+' components',units:s.sold,unitsLabel:s.planned?'Planned units':'Units sold',onUnits:e=>{if(offered)this.updateTermKitUnits(sem.id,k.id,e.target.value);},versionLabel:version?'V'+version.number:'Version',salePrice:price===null?'':price,onSalePrice:e=>{if(offered)this.updateTermKitPrice(sem.id,k.id,e.target.value);},inputStyle:offered?'':'opacity:.45;pointer-events:none',priceInputStyle:offered&&!this.isPastTerm(sem)?'':'opacity:.45;pointer-events:none',revenue,profit,unitPriceLabel,costPerUnit,profitPerUnit,profitStyle,offerLabel:offered?'Offered this semester':'Not offered this semester',offerStyle:`border:1px solid ${offered?'var(--color-accent)':'var(--color-divider)'};background:${offered?'var(--color-accent-100)':'transparent'};color:${offered?'var(--color-accent-800)':'var(--color-neutral-600)'};font-size:10.5px;font-weight:700;padding:4px 7px;cursor:pointer`,toggleOffering:()=>this.toggleTermKitOffering(sem.id,k.id),suggested:this.num(suggested),suggestionStyle:this.status(sem.id)==='Planning'&&suggested?'font-size:11px;padding:3px 5px':'display:none',applySuggestion:()=>this.updateTermKitUnits(sem.id,k.id,suggested),open:()=>this.setState({view:'kit',kitId:k.id}),
       favLabel:k.fav?'★ Favorited':'☆ Favorite',
@@ -3038,7 +3078,7 @@ class Component extends DCLogic {
       });
       const kitPrice=this.kitSalePrice(k,sem.id),kitCost=this.kitCostBreakdown(k,sem.id),kitProfitEach=kitPrice==null?null:kitPrice-kitCost.total,money=v=>v==null?'—':this.m(v),tone=v=>v==null?'var(--color-neutral-600)':v<0?'var(--color-danger)':'var(--color-text)';
       const economics=[{val:kitPrice==null?'Set price':this.m(kitPrice),label:'Unit price',color:kitPrice==null?'var(--color-accent-700)':'var(--color-text)'},{val:money(kitPrice==null?null:kitPrice*s.sold),label:'Revenue',color:'var(--color-text)'},{val:this.m(kitCost.total),label:'Cost / unit'+(kitCost.estimated||kitCost.missing?' (est.)':''),color:'var(--color-text)'},{val:money(kitProfitEach),label:'Profit / unit',color:tone(kitProfitEach)},{val:money(kitProfitEach==null?null:kitProfitEach*s.sold),label:'Profit',color:tone(kitProfitEach)}];
-      kit={code:k.individual?'GENERAL ITEM':k.code,name:k.name,tagClass:k.individual?'tag-outline':'tag-accent',canEdit:true,stats:[...(k.individual?[{val:this.num(s.sold),label:s.planned?'Planned quantity':'Sold',color:'var(--color-text)'}]:[{val:this.num(s.sold),label:s.planned?'Planned demand':'Sold',color:'var(--color-text)'},{val:known?this.num(s.remaining):'—',label:s.planned?'Packed allocated':'On hand',color:'var(--color-text)'},{val:known?this.num(s.faulty):'—',label:'Faulty',color:'var(--color-text)'},...(s.planned?[{val:this.num(s.buffer||0),label:'Extra buffer',color:'var(--color-text)'}]:[]),{val:known?this.num(s.total):'—',label:'Total target',color:'var(--color-text)'},{val:known?this.num(s.purchase):'—',label:'To assemble',color:'var(--color-accent-700)'}]),...economics],rows,rowCount:items.length+' components',progress:(()=>{const total=rows.length,count=id=>rows.filter(r=>r._progress===id).length,checked=rows.filter(r=>['reviewed','purchased','received'].includes(r._progress)).length,pct=total?Math.round(checked/total*100):0;return{label:checked+' of '+total+' checked',pct:pct+'%',barStyle:'height:100%;background:var(--color-accent);width:'+pct+'%',breakdown:this.lineProgressOptions.map(o=>count(o.id)+' '+o.label.toLowerCase()).join(' · '),style:total?'':'display:none'};})(),totalUnits:known?this.num(items.reduce((t,it)=>t+it.q*s.purchase,0))+' cuts / pieces':'—',total:known?this.m(rows.reduce((t,row)=>t+row._cost,0)).replace('.00',''):'—',editKit:()=>this.startKitEdit(k.id,sem.id),kitToList:()=>{this.setState({view:'list'});this.flash(k.code+' folded into shopping list');}};
+      kit={code:k.individual?'GENERAL ITEM':k.code,name:k.name,tagClass:k.individual?'tag-outline':'tag-accent',canEdit:true,stats:[...(k.individual?[{val:this.num(s.sold),label:s.planned?'Planned quantity':'Sold',color:'var(--color-text)'}]:[{val:this.num(s.sold),label:s.planned?'Expected sales':'Sold',color:'var(--color-text)'},...(s.planned?[{val:(s.bufferPercent||0)+'%',label:'Buffer percentage',color:'var(--color-text)'},{val:this.num(s.bufferKits||0),label:'Buffer kits',color:'var(--color-text)'}]:[]),{val:known?this.num(s.total):'—',label:'Pack target',color:'var(--color-text)'},{val:known?this.num(s.remaining):'—',label:s.planned?'Packed usable':'On hand',color:'var(--color-text)'},{val:known?this.num(s.faulty):'—',label:'Faulty',color:'var(--color-text)'},{val:known?this.num(s.purchase):'—',label:'Still to pack',color:'var(--color-accent-700)'}]),...economics],rows,rowCount:items.length+' components',progress:(()=>{const total=rows.length,count=id=>rows.filter(r=>r._progress===id).length,checked=rows.filter(r=>['reviewed','purchased','received'].includes(r._progress)).length,pct=total?Math.round(checked/total*100):0;return{label:checked+' of '+total+' checked',pct:pct+'%',barStyle:'height:100%;background:var(--color-accent);width:'+pct+'%',breakdown:this.lineProgressOptions.map(o=>count(o.id)+' '+o.label.toLowerCase()).join(' · '),style:total?'':'display:none'};})(),totalUnits:known?this.num(items.reduce((t,it)=>t+it.q*s.purchase,0))+' cuts / pieces':'—',total:known?this.m(rows.reduce((t,row)=>t+row._cost,0)).replace('.00',''):'—',editKit:()=>this.startKitEdit(k.id,sem.id),kitToList:()=>{this.setState({view:'list'});this.flash(k.code+' folded into shopping list');}};
     }
 
     // builder
@@ -3540,6 +3580,9 @@ class Component extends DCLogic {
       toggleSidebar:()=>this.setState({sidebarOpen:!S.sidebarOpen}),
       openHistoryPanel:()=>this.setState({historyPanel:true}),
       signOutUser:()=>window.LabKitAuth?.signOut(),
+      saveButtonLabel:S.manualSaveBusy?'Saving & verifying…':((window.LabKitDataSource&&window.LabKitDataSource.kind)==='apps-script'?'Save & verify':'Save changes'),
+      saveButtonStyle:S.manualSaveBusy||(window.LabKitDataSource&&window.LabKitDataSource.canEdit===false)?'opacity:.55;pointer-events:none':'',
+      saveChanges:()=>this.saveAllChanges(),
       dataStatus:(window.LabKitDataSource&&window.LabKitDataSource.statusLabel)||'Local demo data',
       resetLabel:(window.LabKitDataSource&&window.LabKitDataSource.resetLabel)||'Reset',
       resetData:()=>{
