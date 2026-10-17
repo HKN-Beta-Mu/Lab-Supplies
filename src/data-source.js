@@ -249,6 +249,8 @@
     inFlightSerialized: "",
     savePromise: null,
     retryCount: 0,
+    lastSaveError: null,
+    lastSaveWarning: "",
     lastConflictNoticeVersion: 0,
     access: { mode: "connecting", canEdit: false, editor: null },
     syncTimer: null,
@@ -586,12 +588,15 @@
         remote.currentData = remote.pending ? clone(remote.pending) : clone(snapshot);
         remote.lastSavedSerialized = serialized;
         remote.retryCount = 0;
+        remote.lastSaveError = null;
+        remote.lastSaveWarning = String(result.warning || "");
         remote.lastConflictNoticeVersion = 0;
         if (remote.pending) writeRemoteDraft(remote.pending);
         else clearRemoteDraft();
         setRemoteStatus(remote.pending ? "Saving newer changes…" : "Saved to shared sheet", remote.pending ? "saving" : "saved");
         return true;
       } catch (error) {
+        remote.lastSaveError = error;
         if (error.code === "EDITOR_LOCKED") {
           if (!remote.pending) {
             remote.pending = snapshot;
@@ -716,9 +721,19 @@
     } else {
       remote.currentData = storedSnapshot;
       clearRemoteDraft();
-      setRemoteStatus(`Saved & verified · shared sheet · ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`, "verified");
+      setRemoteStatus(
+        remote.lastSaveWarning
+          ? `Saved & verified · ${remote.lastSaveWarning}`
+          : `Saved & verified · shared sheet · ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`,
+        remote.lastSaveWarning ? "warning" : "verified",
+      );
     }
-    return { ok: true, verified: true, version: storedVersion };
+    return {
+      ok: true,
+      verified: true,
+      version: storedVersion,
+      warning: remote.lastSaveWarning || "",
+    };
   }
 
   async function commitChanges(data) {
@@ -750,12 +765,21 @@
       throw error;
     }
 
+    // A click is an explicit retry. Give it the full immediate retry budget
+    // even when background autosave previously exhausted its own retries.
+    remote.retryCount = 0;
+    remote.lastSaveError = null;
     adapter.save(data);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const saved = await flushRemoteChanges();
       if (!saved) {
-        const error = new Error("The shared sheet could not save every pending change. The recovery copy remains in this browser.");
-        error.code = "REMOTE_SAVE_FAILED";
+        const underlying = remote.lastSaveError;
+        const reason = underlying?.message
+          ? String(underlying.message).replace(/[.\s]+$/, "")
+          : "The shared sheet could not save every pending change";
+        const error = new Error(`${reason}. Your changes are still protected in this browser.`);
+        error.code = underlying?.code || "REMOTE_SAVE_FAILED";
+        error.details = underlying?.details || null;
         throw error;
       }
       const result = await verifyRemoteChanges();
@@ -879,6 +903,8 @@
     remote.syncInFlight = false;
     remote.access = { mode: "connecting", canEdit: false, editor: null };
     remote.retryCount = 0;
+    remote.lastSaveError = null;
+    remote.lastSaveWarning = "";
     remote.status = "Connecting to shared sheet…";
     global.document?.body?.classList.remove("labkit-read-only");
     return true;

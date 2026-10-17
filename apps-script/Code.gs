@@ -70,7 +70,7 @@ const LABKIT_SCHEMAS = Object.freeze({
   SemesterKits: Object.freeze([
     "id", "semester_id", "kit_id", "sold", "on_hand", "faulty", "to_purchase",
     "packing_buffer", "forecast_override", "offered", "sale_price", "revenue", "estimated_profit",
-    "updated_at", "version",
+    "updated_at", "version", "packing_buffer_percent",
   ]),
   Inventory: Object.freeze([
     "id", "component_id", "quantity", "location", "counted_at", "updated_at", "version",
@@ -315,29 +315,47 @@ function saveSnapshot_(user, input) {
 
     const nextVersion = currentVersion + 1;
     const now = new Date().toISOString();
+    // AppState is the authoritative copy read by the application. Commit and
+    // flush it before refreshing the human-readable projection tabs so an
+    // issue in a derived tab can never turn a durable app save into a failure.
     writeState_(snapshot, nextVersion, now, user.email);
-    syncSnapshotToTables_(snapshot, nextVersion, now, user.email);
-    appendAudit_({
-      requestId: requestId,
-      email: user.email,
-      action: "saveSnapshot",
-      entity: "AppState",
-      entityId: LABKIT_CONFIG.stateKey,
-      before: { version: currentVersion },
-      after: {
-        version: nextVersion,
-        catalogCount: snapshot.catalog.length,
-        kitCount: snapshot.kits.length,
-        semesterCount: snapshot.terms.length,
-        orderCount: snapshot.orders.length,
-      },
-    });
     SpreadsheetApp.flush();
+
+    const warnings = [];
+    try {
+      syncSnapshotToTables_(snapshot, nextVersion, now, user.email);
+      SpreadsheetApp.flush();
+    } catch (error) {
+      console.error("LabKit projection refresh failed", error && error.stack ? error.stack : error);
+      warnings.push("Some detail tabs could not be refreshed, but the app data was saved");
+    }
+    try {
+      appendAudit_({
+        requestId: requestId,
+        email: user.email,
+        action: "saveSnapshot",
+        entity: "AppState",
+        entityId: LABKIT_CONFIG.stateKey,
+        before: { version: currentVersion },
+        after: {
+          version: nextVersion,
+          catalogCount: snapshot.catalog.length,
+          kitCount: snapshot.kits.length,
+          semesterCount: snapshot.terms.length,
+          orderCount: snapshot.orders.length,
+        },
+      });
+      SpreadsheetApp.flush();
+    } catch (error) {
+      console.error("LabKit audit append failed", error && error.stack ? error.stack : error);
+      warnings.push("The audit row could not be added, but the app data was saved");
+    }
 
     return {
       version: nextVersion,
       updatedAt: now,
       duplicate: false,
+      warning: warnings.join(". "),
     };
   } finally {
     lock.releaseLock();
@@ -2135,7 +2153,12 @@ function validateSnapshot_(value) {
 
 function syncSnapshotToTables_(snapshot, version, now, email) {
   const spreadsheet = getSpreadsheet_();
-  ["KitVersions", "KitLineupVersions", "Semesters", "SemesterKits", "BagInventory", "OrderLines", "Alternatives"].forEach(function (name) {
+  [
+    "Components", "Kits", "KitItems", "KitItemRequirements", "KitVersions",
+    "KitLineupVersions", "SemesterKitVersions", "Semesters", "SalesSummary",
+    "SemesterKits", "Inventory", "PackedKitInventory", "BagInventory",
+    "VendorQuotes", "Orders", "OrderLines", "Alternatives", "ChangeHistory",
+  ].forEach(function (name) {
     ensureSheet_(spreadsheet, name, LABKIT_SCHEMAS[name]);
   });
   const catalog = snapshot.catalog;
@@ -2361,7 +2384,10 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
       const faulty = planning && adjustment.faulty !== undefined
         ? numberOrZero_(adjustment.faulty)
         : (term.id === "sp26" ? numberOrZero_(spring.faulty) : 0);
-      const packingBuffer = planning ? numberOrZero_(adjustment.buffer) : 0;
+      const packingBufferPercent = planning ? Math.max(0, numberOrZero_(adjustment.bufferPercent)) : 0;
+      const packingBuffer = planning
+        ? Math.max(0, Math.ceil((planned * packingBufferPercent / 100) - 1e-9))
+        : 0;
       const toPurchase = planning
         ? Math.max(0, planned + packingBuffer - onHand)
         : (term.id === "sp26" ? numberOrZero_(spring.purchase) : Math.max(0, planned - allocation));
@@ -2381,6 +2407,7 @@ function syncSnapshotToTables_(snapshot, version, now, email) {
         estimated_profit: "",
         updated_at: now,
         version: version,
+        packing_buffer_percent: packingBufferPercent,
       });
     });
   });
@@ -2618,20 +2645,41 @@ function ensureSheet_(spreadsheet, name, headers) {
   if (!sheet) sheet = spreadsheet.insertSheet(name);
   ensureGridSize_(sheet, 1, headers.length);
 
-  const existing = sheet.getRange(1, 1, 1, headers.length).getDisplayValues()[0];
+  const existingWidth = Math.max(1, sheet.getLastColumn());
+  const existing = sheet.getRange(1, 1, 1, existingWidth).getDisplayValues()[0];
+  while (existing.length && String(existing[existing.length - 1]).trim() === "") existing.pop();
   const hasHeader = existing.some(function (value) { return String(value).trim() !== ""; });
   if (hasHeader && existing.join("\u001f") !== headers.join("\u001f")) {
-    let used = existing.length;
-    while (used > 0 && String(existing[used - 1]).trim() === "") used -= 1;
-    const safeAppendMigration = used > 0
-      && existing.slice(0, used).join("\u001f") === headers.slice(0, used).join("\u001f");
-    if (!safeAppendMigration) {
+    const normalized = existing.map(function (value) { return String(value).trim(); });
+    const unique = new Set(normalized);
+    const knownOlderSchema = normalized.length > 0
+      && unique.size === normalized.length
+      && normalized.every(function (header) { return header && headers.indexOf(header) >= 0; });
+    if (!knownOlderSchema) {
       throw appError_(
         "SCHEMA_CONFLICT",
         "The " + name + " header row is not the LabKit schema. It was left unchanged."
       );
     }
+
+    // All existing columns are recognized LabKit columns. Rebuild each row by
+    // header name so newly inserted columns do not shift or erase old values.
+    const rowCount = Math.max(0, sheet.getLastRow() - 1);
+    const oldRows = rowCount
+      ? sheet.getRange(2, 1, rowCount, normalized.length).getValues()
+      : [];
+    const oldIndex = {};
+    normalized.forEach(function (header, index) { oldIndex[header] = index; });
+    const migratedRows = oldRows.map(function (row) {
+      return headers.map(function (header) {
+        return oldIndex[header] === undefined ? "" : row[oldIndex[header]];
+      });
+    });
+    ensureGridSize_(sheet, Math.max(2, rowCount + 1), headers.length);
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    if (migratedRows.length) {
+      sheet.getRange(2, 1, migratedRows.length, headers.length).setValues(migratedRows);
+    }
   }
   if (!hasHeader) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
 

@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.16\.1"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.17\.1"/);
   assert.match(html, />\{\{ saveButtonLabel \}\}<\/button>/);
   assert.match(html, /Buffer \(%\)/);
   assert.match(html, /Buffer kits/);
@@ -1861,6 +1861,7 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
   let storedSnapshot = null;
   let storedVersion = 0;
   let returnMismatchedVerification = false;
+  let forcedSaveError = null;
   let deferVerification = false;
   let releaseVerification = null;
   let successHandler;
@@ -1891,6 +1892,10 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
             },
           });
         } else if (request.action === "saveSnapshot") {
+          if (forcedSaveError) {
+            successHandler({ ok: false, error: forcedSaveError });
+            return;
+          }
           storedSnapshot = request.payload.snapshot;
           storedVersion = request.payload.expectedVersion + 1;
           successHandler({ ok: true, data: { version: storedVersion, duplicate: false } });
@@ -2020,6 +2025,24 @@ test("Apps Script data adapter authenticates and seeds an empty shared sheet", a
   assert.equal(browser.LabKitDataSource.hasUnsavedChanges, true);
   assert.equal(browser.LabKitDataSource.load().orders[0].id, "PO-must-not-be-lost");
   assert.match(browser.LabKitDataSource.statusLabel, /could not be verified/);
+
+  returnMismatchedVerification = false;
+  forcedSaveError = {
+    code: "SCHEMA_CONFLICT",
+    message: "The SemesterKits header row needs migration.",
+  };
+  await assert.rejects(
+    browser.LabKitDataSource.commit({
+      ...browser.LabKitDataSource.load(),
+      orders: [{ id: "PO-error-details", vendor: "Mouser", lines: [] }],
+    }),
+    (error) => (
+      error.code === "SCHEMA_CONFLICT"
+      && /SemesterKits header row needs migration/.test(error.message)
+      && /protected in this browser/.test(error.message)
+    ),
+  );
+  assert.equal(browser.LabKitDataSource.hasUnsavedChanges, true);
 });
 
 test("Apps Script data adapter rebases and retries without discarding an edit", async () => {
@@ -2323,6 +2346,100 @@ test("Apps Script backend has authenticated, versioned sheet storage", async () 
   ]);
   assert.match(guide, /Deploy → New deployment/);
   assert.match(guide, /seeded `Users\.uid` cell is intentionally blank/);
+});
+
+test("Apps Script migrates known older sheet columns without shifting saved values", async () => {
+  const source = await read("apps-script/Code.gs");
+  const backend = new Function(`${source}; return { ensureSheet_, LABKIT_SCHEMAS };`)();
+  const expected = [...backend.LABKIT_SCHEMAS.SemesterKits];
+  const oldHeaders = expected.filter((header) => (
+    header !== "packing_buffer" && header !== "packing_buffer_percent"
+  ));
+  const oldRow = oldHeaders.map((header) => (
+    header === "forecast_override" ? 360 : `saved-${header}`
+  ));
+
+  class FakeRange {
+    constructor(sheet, row, column, rowCount, columnCount) {
+      Object.assign(this, { sheet, row, column, rowCount, columnCount });
+    }
+
+    getValues() {
+      return Array.from({ length: this.rowCount }, (_, rowOffset) => (
+        Array.from({ length: this.columnCount }, (_, columnOffset) => (
+          this.sheet.values[this.row - 1 + rowOffset]?.[this.column - 1 + columnOffset] ?? ""
+        ))
+      ));
+    }
+
+    getDisplayValues() {
+      return this.getValues().map((row) => row.map((value) => String(value)));
+    }
+
+    setValues(values) {
+      values.forEach((row, rowOffset) => {
+        const targetRow = this.row - 1 + rowOffset;
+        this.sheet.values[targetRow] ||= [];
+        row.forEach((value, columnOffset) => {
+          this.sheet.values[targetRow][this.column - 1 + columnOffset] = value;
+        });
+      });
+      return this;
+    }
+
+    setFontWeight() { return this; }
+    setBackground() { return this; }
+    setFontColor() { return this; }
+  }
+
+  class FakeSheet {
+    constructor(values) {
+      this.values = values.map((row) => [...row]);
+      this.maxRows = 20;
+      this.maxColumns = oldHeaders.length;
+    }
+
+    getLastRow() {
+      let last = 0;
+      this.values.forEach((row, index) => {
+        if (row.some((value) => value !== "" && value !== undefined)) last = index + 1;
+      });
+      return last;
+    }
+
+    getLastColumn() {
+      return this.values.reduce((last, row) => {
+        row.forEach((value, index) => {
+          if (value !== "" && value !== undefined) last = Math.max(last, index + 1);
+        });
+        return last;
+      }, 0);
+    }
+
+    getRange(row, column, rowCount, columnCount) {
+      return new FakeRange(this, row, column, rowCount, columnCount);
+    }
+
+    getMaxRows() { return this.maxRows; }
+    getMaxColumns() { return this.maxColumns; }
+    insertRowsAfter(_after, count) { this.maxRows += count; }
+    insertColumnsAfter(_after, count) { this.maxColumns += count; }
+    setFrozenRows() {}
+  }
+
+  const sheet = new FakeSheet([oldHeaders, oldRow]);
+  const spreadsheet = {
+    getSheetByName: (name) => (name === "SemesterKits" ? sheet : null),
+    insertSheet: () => { throw new Error("existing sheet should be reused"); },
+  };
+
+  backend.ensureSheet_(spreadsheet, "SemesterKits", expected);
+  assert.deepEqual(sheet.values[0].slice(0, expected.length), expected);
+  const migrated = Object.fromEntries(expected.map((header, index) => [header, sheet.values[1][index]]));
+  assert.equal(migrated.forecast_override, 360);
+  assert.equal(migrated.updated_at, "saved-updated_at");
+  assert.equal(migrated.packing_buffer, "");
+  assert.equal(migrated.packing_buffer_percent, "");
 });
 
 test("supplier and Gemini adapters normalize official API responses", async () => {

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ec3013">
 <meta name="description" content="Plan, price, and purchase electronic lab kit components across semesters.">
-  <meta name="labkit-build" content="2026.10.16.1">
+  <meta name="labkit-build" content="2026.10.17.1">
 <title>LabKit · Component Procurement</title>
 <link rel="stylesheet" href="./src/auth.css">
 <script type="module" src="./src/firebase.js"></script>
@@ -1580,7 +1580,7 @@ class Component extends DCLogic {
     try{
       const result=source.commit?await source.commit(snapshot):(source.save(snapshot)&&(!source.flush||await source.flush())?{verified:false}:null);
       if(!result)throw new Error('The save did not finish.');
-      this.flash(result.verified?'All changes saved and verified':'All changes saved');
+      this.flash(result.warning?`All changes saved and verified. ${result.warning}`:(result.verified?'All changes saved and verified':'All changes saved'));
     }catch(error){
       this.flash(error&&error.message||'Save failed. Your recovery copy is still in this browser.');
     }finally{
