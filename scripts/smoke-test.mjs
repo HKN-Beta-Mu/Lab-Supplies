@@ -13,7 +13,7 @@ test("entry point contains the complete application shell", async () => {
   assert.match(html, /vCatalog/);
   assert.match(html, /vOrders/);
   assert.match(html, /LabKitDataSource\.save/);
-  assert.match(html, /name="labkit-build" content="2026\.10\.17\.1"/);
+  assert.match(html, /name="labkit-build" content="2026\.10\.17\.2"/);
   assert.match(html, />\{\{ saveButtonLabel \}\}<\/button>/);
   assert.match(html, /Buffer \(%\)/);
   assert.match(html, /Buffer kits/);
@@ -2440,6 +2440,23 @@ test("Apps Script migrates known older sheet columns without shifting saved valu
   assert.equal(migrated.updated_at, "saved-updated_at");
   assert.equal(migrated.packing_buffer, "");
   assert.equal(migrated.packing_buffer_percent, "");
+});
+
+test("Apps Script accepts a chunked snapshot larger than the former save ceiling", async () => {
+  const source = await read("apps-script/Code.gs");
+  const backend = new Function(`${source}; return { validateSnapshot_, LABKIT_CONFIG };`)();
+  const largeSnapshot = {
+    catalog: [],
+    kits: [],
+    kitVersions: [],
+    changeLog: [],
+    orders: [],
+    terms: [],
+    state: { retainedData: "x".repeat(4_600_000) },
+  };
+
+  assert.equal(backend.LABKIT_CONFIG.maxSnapshotCharacters, 20_000_000);
+  assert.doesNotThrow(() => backend.validateSnapshot_(largeSnapshot));
 });
 
 test("supplier and Gemini adapters normalize official API responses", async () => {

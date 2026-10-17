@@ -10,7 +10,11 @@ const LABKIT_CONFIG = Object.freeze({
   accountEmail: "HKNLabSuppliesGatech@gmail.com",
   stateKey: "main",
   stateChunkSize: 40000,
-  maxSnapshotCharacters: 4500000,
+  // AppState stores one 40,000-character chunk per row. Five hundred rows
+  // keeps the state bounded while leaving ample room for real purchasing and
+  // change-history data. The previous 4.5M guard rejected a payload that had
+  // already reached Apps Script even though the chunked sheet could hold it.
+  maxSnapshotCharacters: 20000000,
   editorLeaseProperty: "LABKIT_EDITOR_LEASE",
   editorLeaseMilliseconds: 90000,
   properties: Object.freeze({
@@ -2146,7 +2150,22 @@ function validateSnapshot_(value) {
 
   const serialized = JSON.stringify(snapshot);
   if (serialized.length > LABKIT_CONFIG.maxSnapshotCharacters) {
-    throw appError_("SNAPSHOT_TOO_LARGE", "The LabKit data is too large for one save.");
+    const sizeMb = Math.round((serialized.length / 1048576) * 10) / 10;
+    const maxMb = Math.round((LABKIT_CONFIG.maxSnapshotCharacters / 1048576) * 10) / 10;
+    const largestSections = Object.keys(snapshot).map(function (key) {
+      return { key: key, characters: JSON.stringify(snapshot[key]).length };
+    }).sort(function (left, right) {
+      return right.characters - left.characters;
+    }).slice(0, 5);
+    throw appError_(
+      "SNAPSHOT_TOO_LARGE",
+      "The LabKit data is " + sizeMb + " MB, above the " + maxMb + " MB save limit.",
+      {
+        characters: serialized.length,
+        maxCharacters: LABKIT_CONFIG.maxSnapshotCharacters,
+        largestSections: largestSections,
+      }
+    );
   }
   return JSON.parse(serialized);
 }
